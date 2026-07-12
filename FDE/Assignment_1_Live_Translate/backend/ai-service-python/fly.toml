@@ -1,0 +1,21 @@
+app = "naveed-lt-ai"
+primary_region = "sjc"
+
+# Private service - no [http_service], so no public IP is allocated. The gateway
+# reaches it over Fly's private network at naveed-lt-ai.internal:8000. The browser
+# never touches it.
+
+[build]
+
+[env]
+  MODEL = "gemini-3.1-flash-lite"
+  TRANSLATION_DB_PATH = "/data/translations.db"
+
+# SQLite lives on a persistent volume so the cache survives restarts/redeploys.
+[[mounts]]
+  source = "trans_data"
+  destination = "/data"
+
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "512mb"

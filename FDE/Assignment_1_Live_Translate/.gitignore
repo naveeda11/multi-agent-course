@@ -1,0 +1,16 @@
+# editor / runtime junk
+*.swp
+*.out
+*.log
+
+# service runtime + secrets (also covered by per-service .gitignores)
+**/.env
+**/*.db
+**/*.db-wal
+**/*.db-shm
+**/node_modules/
+**/.venv/
+
+# generated benchmark output (keep the provided benchmark/ pristine)
+benchmark/_bench.json
+eval/_bench.json

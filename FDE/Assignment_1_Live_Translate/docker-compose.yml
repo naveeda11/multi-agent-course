@@ -1,0 +1,38 @@
+# One command to run the whole backend locally:
+#
+#   GEMINI_API_KEY=... docker compose up --build
+#
+# (or put GEMINI_API_KEY in backend/ai-service-python/.env - it's read via env_file)
+#
+# Gateway is published on http://localhost:8787 (point the widget/extension here).
+# The AI service is internal-only on the compose network - the browser never
+# touches it, mirroring the private-service setup used on Fly.io.
+
+services:
+  ai-service:
+    build: ./backend/ai-service-python
+    env_file:
+      - ./backend/ai-service-python/.env   # supplies GEMINI_API_KEY (and MODEL)
+    environment:
+      MODEL: ${MODEL:-gemini-3.1-flash-lite}
+      TRANSLATION_DB_PATH: /data/translations.db   # SQLite on a named volume → survives restarts
+      HOST: 0.0.0.0                          # Docker's bridge is IPv4 (Fly default is ::)
+    volumes:
+      - trans_data:/data
+    expose:
+      - "8000"                             # visible to the gateway, not the host
+    restart: unless-stopped
+
+  gateway:
+    build: ./backend/gateway-node
+    environment:
+      PORT: "8787"
+      AI_SERVICE_URL: http://ai-service:8000   # reach the AI service by compose DNS name
+    ports:
+      - "8787:8787"                        # the only publicly published port
+    depends_on:
+      - ai-service
+    restart: unless-stopped
+
+volumes:
+  trans_data:
