@@ -13,11 +13,15 @@ KNOWLEDGE_ROOT = Path(__file__).resolve().parent.parent / "knowledge"
 _STOP_WORDS = {
     "a", "about", "and", "are", "can", "do", "does", "for", "hotel", "i", "in",
     "is", "me", "of", "policy", "tell", "the", "to", "what", "your",
-    "cual", "cuál", "de", "del", "el", "es", "la", "las", "los", "me", "politica",
-    "política", "que", "qué", "sobre", "una", "y",
+    "cual", "de", "del", "el", "es", "la", "las", "los", "politica",
+    "que", "sobre", "una", "y",
+    "au", "aux", "avez", "ce", "combien", "des", "est", "et", "il", "je", "le",
+    "les", "quel", "quelle", "quelles", "quels", "sur", "un", "une", "vos",
+    "votre", "vous",
 }
 
 _QUERY_EXPANSIONS = {
+    # Spanish
     "cancelacion": ["cancellation", "cancelled"],
     "desayuno": ["breakfast"],
     "estacionamiento": ["parking"],
@@ -26,6 +30,23 @@ _QUERY_EXPANSIONS = {
     "perro": ["pets", "dogs"],
     "perros": ["pets", "dogs"],
     "accesibilidad": ["accessibility", "accessible"],
+    # French
+    "annulation": ["cancellation", "cancelled"],
+    "annuler": ["cancellation", "cancelled"],
+    "animaux": ["pets", "dogs"],
+    "animal": ["pets", "dogs"],
+    "chien": ["pets", "dogs"],
+    "chiens": ["pets", "dogs"],
+    "stationnement": ["parking"],
+    "voiturier": ["parking", "valet"],
+    "dejeuner": ["breakfast"],
+    "accessibilite": ["accessibility", "accessible"],
+    "accessible": ["accessibility"],
+    "accessibles": ["accessibility", "accessible"],
+    "chambre": ["room", "rooms"],
+    "chambres": ["room", "rooms"],
+    "arrivee": ["check-in", "checkin"],
+    "depart": ["check-out", "checkout"],
 }
 
 
@@ -81,14 +102,15 @@ class KnowledgeBase:
             self.connection = None
 
     def search(self, query: str, limit: int = 3) -> list[dict]:
-        original_tokens = re.findall(r"[a-zA-Z0-9áéíóúüñ]+", query.lower())
+        # Strip accents before tokenizing so French (ç, à, è) and Spanish (ñ, í)
+        # queries survive the split intact and match the ASCII expansion keys.
+        original_tokens = re.findall(r"[a-z0-9]+", _normalized(query))
         tokens = []
         for token in original_tokens:
             if token in _STOP_WORDS:
                 continue
-            normalized = _normalized(token)
-            tokens.append(normalized)
-            tokens.extend(_QUERY_EXPANSIONS.get(normalized, []))
+            tokens.append(token)
+            tokens.extend(_QUERY_EXPANSIONS.get(token, []))
         tokens = list(dict.fromkeys(tokens))
         if not tokens:
             return []

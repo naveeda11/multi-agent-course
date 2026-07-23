@@ -1,0 +1,115 @@
+{
+  "schemaVersion": "1.0",
+  "provider": "mock",
+  "model": "mock-llm",
+  "mode": "simulated-network",
+  "endpointSilenceMs": 600.0,
+  "assumptions": {
+    "sttMs": 220.0,
+    "llmCallMs": 480.0,
+    "ttsFirstAudioMs": 300.0,
+    "toolCallMs": 40.0
+  },
+  "turns": [
+    {
+      "turn": 1,
+      "label": "policy question (retrieval)",
+      "llmCalls": 2,
+      "toolCalls": 1,
+      "action": null,
+      "stages": {
+        "endpoint": 600.0,
+        "stt": 220.0,
+        "routing": 0.1,
+        "retrieval": 0.6,
+        "llm": 960.0,
+        "tools": 40.6,
+        "tts": 300.0
+      },
+      "totalMs": 2120.7
+    },
+    {
+      "turn": 2,
+      "label": "operational tool",
+      "llmCalls": 2,
+      "toolCalls": 1,
+      "action": null,
+      "stages": {
+        "endpoint": 600.0,
+        "stt": 220.0,
+        "routing": 0.0,
+        "retrieval": 0.0,
+        "llm": 960.1,
+        "tools": 40.0,
+        "tts": 300.0
+      },
+      "totalMs": 2120.1
+    },
+    {
+      "turn": 3,
+      "label": "availability tool",
+      "llmCalls": 2,
+      "toolCalls": 1,
+      "action": null,
+      "stages": {
+        "endpoint": 600.0,
+        "stt": 220.0,
+        "routing": 0.0,
+        "retrieval": 0.0,
+        "llm": 960.1,
+        "tools": 40.0,
+        "tts": 300.0
+      },
+      "totalMs": 2120.1
+    },
+    {
+      "turn": 4,
+      "label": "blocked advice (no model call)",
+      "llmCalls": 0,
+      "toolCalls": 0,
+      "action": null,
+      "stages": {
+        "endpoint": 600.0,
+        "stt": 220.0,
+        "routing": 0.0,
+        "retrieval": 0.0,
+        "llm": 0.0,
+        "tools": 0.0,
+        "tts": 300.0
+      },
+      "totalMs": 1120.0
+    },
+    {
+      "turn": 5,
+      "label": "call close",
+      "llmCalls": 2,
+      "toolCalls": 1,
+      "action": "hangup",
+      "stages": {
+        "endpoint": 600.0,
+        "stt": 220.0,
+        "routing": 0.0,
+        "retrieval": 0.0,
+        "llm": 960.0,
+        "tools": 40.0,
+        "tts": 300.0
+      },
+      "totalMs": 2120.0
+    }
+  ],
+  "summary": {
+    "turns": 5,
+    "meanTotalMs": 1920.2,
+    "medianTotalMs": 2120.1,
+    "maxTotalMs": 2120.7,
+    "stageMeanMs": {
+      "endpoint": 600.0,
+      "stt": 220.0,
+      "routing": 0.0,
+      "retrieval": 0.1,
+      "llm": 768.0,
+      "tools": 32.1,
+      "tts": 300.0
+    }
+  }
+}

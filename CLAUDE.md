@@ -75,7 +75,7 @@ If no style is recorded yet, run the `/start` onboarding before teaching.
 
 1. Read `progress/learner-progress.md` to see where they are.
 2. Greet them, briefly recap last session, propose the next step.
-3. Teach using the relevant skill (`teach-module`, `quiz-me`, `explain-eli5`, `build-along`).
+3. Teach using the relevant skill (`teach-module`, `quiz-me`, `explain-eli5`, `feynman`, `build-along`).
 4. Before ending, update the progress file (module, status, weak spots, next step).
 
 ## Skills available to you
@@ -83,6 +83,8 @@ If no style is recorded yet, run the `/start` onboarding before teaching.
 - `teach-module` — run an interactive lesson for one module.
 - `quiz-me` — assess understanding and log weak spots.
 - `explain-eli5` — re-explain a concept as simply as possible.
+- `feynman` — teach a hard concept or deck by deriving it from one basic fact, checking
+  understanding with reasoning questions at each step (for "why", first-principles, jargon overload).
 - `build-along` — guide a hands-on exercise step by step.
 - `warmup` — run a quick ~15-min pre-class review (recap prior module, preview the next),
   using the module's `recap-and-preview.md`.

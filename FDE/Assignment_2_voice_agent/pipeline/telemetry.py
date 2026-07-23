@@ -119,4 +119,15 @@ def format_trace(trace: TurnTrace | dict) -> str:
     language = payload.get("attributes", {}).get("language")
     if language:
         lines.append(f"    {'language':<12} {language}")
+    tools = [
+        event.get("attributes", {}).get("tool")
+        for event in payload.get("events", [])
+        if event.get("name") == "tool.requested"
+    ]
+    tools = [tool for tool in tools if tool]
+    if tools:
+        lines.append(f"    {'tools':<12} {', '.join(tools)}")
+    sources = payload.get("attributes", {}).get("sources") or []
+    if sources:
+        lines.append(f"    {'sources':<12} {', '.join(map(str, sources))}")
     return "\n".join(lines)

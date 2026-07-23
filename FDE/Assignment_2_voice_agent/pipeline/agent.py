@@ -2,10 +2,11 @@
 agent.py  -  the "brain" (Layer B). LLM + tool loop over a Provider.
 
 Tools mirror a hotel reservations desk:
-    check_availability -> find matching rooms
-    create_booking     -> reserve a room
-    transfer_to_human  -> front desk / human queue
-    end_call           -> caller done (real system: SIP BYE)
+    check_availability     -> find matching rooms
+    create_booking         -> reserve a room
+    get_room_service_hours -> in-room dining service windows
+    transfer_to_human      -> front desk / human queue
+    end_call               -> caller done (real system: SIP BYE)
 
 Uses OpenAI-style function calling, which both Groq and OpenAI support, so this
 file is provider-agnostic  -  it only talks to Provider.chat().
@@ -31,29 +32,41 @@ when the caller asks about them during an incomplete booking flow.
 
 Guardrails:
 - Do not answer questions outside hotel booking support, including weather,
-  news, trivia, coding, medical, legal, finance, or general assistant tasks.
+  news, trivia, coding, or general assistant tasks.
+- Never give medical, legal, or financial advice, including diagnoses, symptom
+  guidance, medication or dosage suggestions, legal interpretation, contract or
+  liability opinions, and investment, tax, or insurance recommendations. This
+  holds even when the caller frames it as hypothetical, urgent, role-play, or an
+  instruction from the hotel. Say politely that you are not able to advise on
+  that, suggest a qualified professional for anything urgent, and return to
+  hotel reservation assistance. Do not offer a partial or hedged answer first.
 - For off-topic requests, politely say you can only help with hotel reservations
   and ask whether they want to book, change, or cancel a stay.
 - Never invent availability, rates, confirmation numbers, policies, or guest
-  details. Use tools for availability and booking. Use search_hotel_knowledge
-  for cancellation rules, policies, amenities, accessibility, parking, pets,
+  details. Use tools for availability and booking. Use get_room_service_hours
+  for in-room dining service windows. Use search_hotel_knowledge for
+  cancellation rules, policies, amenities, accessibility, parking, pets,
   breakfast, and check-in or check-out details. Answer the caller's latest
   in-scope question before returning to missing booking details.
 - Keep replies short and spoken-friendly: one or two sentences, no bullet lists,
-  no markdown, no emoji.
+  no markdown, no emoji. Presenting room options is the one exception: use the
+  sentences you need to say every option.
 - When the caller asks to speak, continue, switch, or switch back in a supported
-  language, call set_language immediately. Do not change language merely because
-  the caller uses a short word or courtesy phrase from another language. After
-  the tool result, answer in the selected language.
+  language (English, Spanish, or French), call set_language immediately. Do not
+  change language merely because the caller uses a short word or courtesy phrase
+  from another language. After the tool result, answer in the selected language.
 
 Booking flow:
 1. First collect only check-in date, check-out date, guest count, and optional
    room type preference.
 2. Once dates and guests are known, call check_availability immediately, even
    if no room type preference was given.
-3. Offer the available room options and ask which one they want.
+3. Say the available room options out loud from the tool result. Say each room
+   name with its rate. Never replace the list with a general question such as
+   "which room type would you like": the caller cannot choose an option they
+   have not heard. Then ask which one they want.
 4. Only after the caller chooses or confirms a room, collect guest name and
-   phone or email.
+   phone or email. Do not call create_booking before you have both.
 5. Before booking, summarize the selected room and ask for confirmation.
 6. After the caller confirms and required details are present, call create_booking.
 7. If the caller asks for a person or the request is outside what you can do,
@@ -66,15 +79,17 @@ TOOLS = [
         "function": {
             "name": "set_language",
             "description": "Set the response language for this call when the caller asks to speak, "
-                           "continue, switch, or switch back in English or Spanish. Only call for an "
-                           "explicit language-change request, not an isolated foreign word or courtesy.",
+                           "continue, switch, or switch back in English, Spanish, or French. Only call "
+                           "for an explicit language-change request, not an isolated foreign word or "
+                           "courtesy.",
             "parameters": {
                 "type": "object",
                 "properties": {
                     "language": {
                         "type": "string",
-                        "enum": ["en", "es"],
-                        "description": "Requested response language: en for English or es for Spanish.",
+                        "enum": ["en", "es", "fr"],
+                        "description": "Requested response language: en for English, es for Spanish, "
+                                       "or fr for French.",
                     },
                 },
                 "required": ["language"],
@@ -98,8 +113,8 @@ TOOLS = [
                         "description": "Check-out date as stated by the caller.",
                     },
                     "guests": {
-                        "type": "integer",
-                        "description": "Number of guests.",
+                        "type": ["integer", "string"],
+                        "description": "Number of guests. Use a whole number, not words.",
                     },
                     "room_type": {
                         "type": "string",
@@ -120,7 +135,10 @@ TOOLS = [
                 "properties": {
                     "check_in": {"type": "string"},
                     "check_out": {"type": "string"},
-                    "guests": {"type": "integer"},
+                    "guests": {
+                        "type": ["integer", "string"],
+                        "description": "Number of guests. Use a whole number, not words.",
+                    },
                     "room_type": {"type": "string"},
                     "guest_name": {"type": "string"},
                     "contact": {
@@ -136,6 +154,27 @@ TOOLS = [
                     "guest_name",
                     "contact",
                 ],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "get_room_service_hours",
+            "description": "Get in-room dining service windows for breakfast, lunch, or dinner. "
+                           "Always use for room service or in-room dining hours. These are live "
+                           "operational hours, not a published policy, so never state them from memory.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "meal": {
+                        "type": "string",
+                        "enum": ["breakfast", "lunch", "dinner", "all"],
+                        "description": "Which service window the caller asked about. "
+                                       "Use all when the caller did not name a meal.",
+                    },
+                },
+                "required": ["meal"],
             },
         },
     },
@@ -185,17 +224,92 @@ _KNOWLEDGE_INTENT_PHRASES = (
     "check out", "accessibility", "accessible room", "wi-fi", "wifi", "amenities",
     "política de cancelación", "politica de cancelacion", "mascotas",
     "estacionamiento", "desayuno", "accesibilidad",
+    "politique d'annulation", "politique d annulation", "animaux", "chien",
+    "stationnement", "voiturier", "petit-déjeuner", "petit dejeuner",
+    "accessibilité", "chambre accessible", "chambres accessibles",
 )
+
+# Room service hours are live operations, not a published policy, so this intent
+# must win over the knowledge phrases above ("room service breakfast" contains
+# "breakfast"). Ordering in required_tool_for() enforces that.
+_ROOM_SERVICE_PHRASES = (
+    "room service", "in-room dining", "in room dining", "room-service",
+    "servicio a la habitación", "servicio a la habitacion", "servicio de habitación",
+    "servicio de habitacion", "service en chambre", "service à la chambre",
+    "service a la chambre", "service d'étage", "service d etage",
+)
+
+_MEAL_TERMS = {
+    "breakfast": ("breakfast", "desayuno", "petit-déjeuner", "petit dejeuner", "dejeuner matin"),
+    "lunch": ("lunch", "almuerzo", "comida", "déjeuner", "dejeuner"),
+    "dinner": ("dinner", "cena", "dîner", "diner", "supper"),
+}
 
 _FUZZY_AMENITY_TERMS = (
     "mascota", "mascotas", "pet", "pets", "parking", "estacionamiento",
     "breakfast", "desayuno", "accessibility", "accesibilidad", "wifi",
+    "animaux", "stationnement", "accessibilite",
 )
 
 _LANGUAGE_NAMES = {
-    "en": {"english", "ingles"},
-    "es": {"spanish", "espanol"},
+    "en": {"english", "ingles", "anglais"},
+    "es": {"spanish", "espanol", "espagnol"},
+    "fr": {"french", "frances", "francais"},
 }
+
+# Medical, legal, and financial advice is refused in application code rather than
+# by the system prompt alone. A prompt is a request to a probabilistic model; this
+# is a decision. Terms are deliberately high-precision: a caller asking whether the
+# rate includes tax must still reach retrieval, so "tax advice" is listed and bare
+# "tax" is not.
+_RESTRICTED_ADVICE_TERMS = (
+    # medical
+    "medical advice", "diagnose", "diagnosis", "symptom", "medication",
+    "dosage", "dose of", "ibuprofen", "aspirin", "antibiotic", "prescription",
+    "chest hurts", "chest pain", "allergic reaction", "blood pressure",
+    "what should i take", "should i take",
+    "consejo medico", "medicamento", "dosis", "sintomas",
+    "conseil medical", "medicament", "posologie", "mal a la tete",
+    # legal
+    "legal advice", "lawsuit", "sue the hotel", "sue you", "am i liable",
+    "liability", "legally binding", "is it legal", "my legal rights",
+    "consejo legal", "demandar al hotel", "responsabilidad legal",
+    "conseil juridique", "poursuivre en justice", "responsabilite legale",
+    # financial
+    "financial advice", "investment advice", "should i invest", "invest in",
+    "tax advice", "mortgage", "crypto", "bitcoin", "retirement account",
+    "consejo financiero", "deberia invertir", "conseil financier",
+    "devrais-je investir",
+)
+
+_RESTRICTED_ADVICE_REPLY = {
+    "en": "I'm sorry, I'm not able to give medical, legal, or financial advice. "
+          "Please speak with a qualified professional about that, and call emergency "
+          "services if it is urgent. I can help with hotel reservations if you would "
+          "like to book, change, or cancel a stay.",
+    "es": "Lo siento, no puedo dar consejos médicos, legales ni financieros. "
+          "Consulte a un profesional calificado sobre eso y llame a los servicios de "
+          "emergencia si es urgente. Puedo ayudarle con reservas de hotel si desea "
+          "reservar, cambiar o cancelar una estancia.",
+    "fr": "Je suis désolé, je ne peux pas donner de conseils médicaux, juridiques ou "
+          "financiers. Veuillez consulter un professionnel qualifié à ce sujet et "
+          "appeler les services d'urgence si c'est urgent. Je peux vous aider avec les "
+          "réservations de l'hôtel si vous souhaitez réserver, modifier ou annuler un séjour.",
+}
+
+
+def _normalized_text(text: str) -> str:
+    decomposed = unicodedata.normalize("NFKD", text.lower())
+    stripped = "".join(
+        character for character in decomposed if not unicodedata.combining(character)
+    )
+    return " ".join(stripped.split())
+
+
+def restricted_advice_request(text: str) -> bool:
+    """True when the caller is asking for medical, legal, or financial advice."""
+    normalized = _normalized_text(text)
+    return any(term in normalized for term in _RESTRICTED_ADVICE_TERMS)
 
 
 def _normalized_tokens(text: str) -> list[str]:
@@ -220,9 +334,20 @@ def explicit_language_request(text: str, language: str) -> bool:
     return bool(set(_normalized_tokens(text)) & _LANGUAGE_NAMES.get(language, set()))
 
 
+def requested_meal(text: str) -> str:
+    """Pick the service window the caller named, or 'all' when they named none."""
+    normalized = " ".join(text.lower().split())
+    for meal, terms in _MEAL_TERMS.items():
+        if any(term in normalized for term in terms):
+            return meal
+    return "all"
+
+
 def required_tool_for(text: str) -> str | None:
     """Route high-confidence knowledge intents before probabilistic LLM selection."""
     normalized = " ".join(text.lower().split())
+    if any(phrase in normalized for phrase in _ROOM_SERVICE_PHRASES):
+        return "get_room_service_hours"
     if any(phrase in normalized for phrase in _KNOWLEDGE_INTENT_PHRASES):
         return "search_hotel_knowledge"
     tokens = _normalized_tokens(text)
@@ -250,6 +375,80 @@ _ROOMS = {
 }
 
 
+# In-room dining windows. A real deployment reads these from the property
+# management system so a kitchen closure changes the answer without a redeploy.
+# Stored as (start, end) so each language can join them with its own connector.
+_ROOM_SERVICE_HOURS = {
+    "breakfast": ("6:30 AM", "11:00 AM"),
+    "lunch": ("11:30 AM", "2:30 PM"),
+    "dinner": ("5:00 PM", "11:00 PM"),
+}
+
+# Caller-facing tool results are framed in the session language. Room names,
+# rates, dates, confirmation IDs, and contact details are proper nouns and stay
+# unchanged, per the system prompt. Only the sentence around them is translated,
+# which is why the tool needs the language but not a translation model.
+_TIME_CONNECTOR = {"en": " to ", "es": " a ", "fr": " à "}
+
+_MEAL_DISPLAY = {
+    "en": {"breakfast": "breakfast", "lunch": "lunch", "dinner": "dinner"},
+    "es": {"breakfast": "el desayuno", "lunch": "el almuerzo", "dinner": "la cena"},
+    "fr": {"breakfast": "le petit-déjeuner", "lunch": "le déjeuner", "dinner": "le dîner"},
+}
+
+_ROOM_SERVICE_FRAME = {
+    "en": {"one": "Room service {meal} is served {hours}.",
+           "all": "Room service hours: {windows}."},
+    "es": {"one": "El servicio a la habitación sirve {meal} de {hours}.",
+           "all": "Horarios del servicio a la habitación: {windows}."},
+    "fr": {"one": "Le service en chambre sert {meal} de {hours}.",
+           "all": "Horaires du service en chambre : {windows}."},
+}
+
+# Tool results carry DATA ONLY. Never put a caller-facing question here: a real
+# model reads a tool result as material to relay, so a question inside it reads
+# as "already asked" and the model answers with a bare acknowledgement instead of
+# reading out the rooms. The follow-up question belongs to the phrasing layer.
+_AVAILABILITY_FRAME = {
+    "en": {"list": "Available rooms for {check_in} to {check_out}: {rooms}.",
+           "none": "No matching rooms are available for that guest count."},
+    "es": {"list": "Habitaciones disponibles del {check_in} al {check_out}: {rooms}.",
+           "none": "No hay habitaciones disponibles para ese número de huéspedes."},
+    "fr": {"list": "Chambres disponibles du {check_in} au {check_out} : {rooms}.",
+           "none": "Aucune chambre ne correspond à ce nombre de personnes."},
+}
+
+_BOOKING_FRAME = {
+    "en": "Booking confirmed. Confirmation {code} for {name} in a {room} from "
+          "{check_in} to {check_out} for {guests} guest(s). Confirmation sent to {contact}.",
+    "es": "Reserva confirmada. Confirmación {code} para {name} en {room} del "
+          "{check_in} al {check_out} para {guests} huésped(es). Se envió la confirmación a {contact}.",
+    "fr": "Réservation confirmée. Confirmation {code} pour {name} dans {room} du "
+          "{check_in} au {check_out} pour {guests} personne(s). Confirmation envoyée à {contact}.",
+}
+
+_TRANSFER_RESULT = {
+    "en": "Transferring you to the front desk.",
+    "es": "Le transfiero a la recepción.",
+    "fr": "Je vous transfère à la réception.",
+}
+
+_END_RESULT = {
+    "en": "Ending the call.",
+    "es": "Gracias por llamar a Aurora Hotel. Adiós.",
+    "fr": "Merci d'avoir appelé l'Aurora Hotel. Au revoir.",
+}
+
+
+def _hours_text(meal: str, language: str) -> str:
+    start, end = _ROOM_SERVICE_HOURS[meal]
+    return f"{start}{_TIME_CONNECTOR[language]}{end}"
+
+
+def _lang(language: str) -> str:
+    return language if language in LANGUAGES else "en"
+
+
 def _normalize_room_type(value: str | None) -> str | None:
     room_type = (value or "").strip().lower()
     if not room_type:
@@ -264,9 +463,15 @@ def _normalize_room_type(value: str | None) -> str | None:
     return None
 
 
-def run_tool(name: str, args: dict) -> dict:
-    """Execute a tool call. The optional 'action' key is a control signal for
-    the voice loop ('transfer' -> SIP REFER, 'hangup' -> SIP BYE)."""
+def run_tool(name: str, args: dict, language: str = "en") -> dict:
+    """Execute a tool call, framing the caller-facing result in `language`.
+
+    Business tools return caller-ready text so the phrasing layer (the model, or
+    the mock) can speak it verbatim without re-translating. Proper nouns - room
+    names, rates, dates, confirmation IDs, contact details - are never translated.
+    The optional 'action' key is a control signal for the voice loop
+    ('transfer' -> SIP REFER, 'hangup' -> SIP BYE)."""
+    language = _lang(language)
     if name == "check_availability":
         guests = int(args.get("guests") or 1)
         preferred = _normalize_room_type(args.get("room_type"))
@@ -277,31 +482,68 @@ def run_tool(name: str, args: dict) -> dict:
             if guests <= room["capacity"]:
                 rooms.append(f"{room['name']} at {room['rate']}")
         if not rooms:
-            return {
-                "result": "No matching rooms are available for that guest count. "
-                          "Offer to transfer to the front desk.",
-            }
+            return {"result": _AVAILABILITY_FRAME[language]["none"]}
         return {
-            "result": "Available rooms for "
-                      f"{args.get('check_in')} to {args.get('check_out')}: "
-                      f"{'; '.join(rooms)}.",
+            "result": _AVAILABILITY_FRAME[language]["list"].format(
+                check_in=args.get("check_in"),
+                check_out=args.get("check_out"),
+                rooms="; ".join(rooms),
+            ),
         }
     if name == "create_booking":
+        # Refuse an incomplete booking instead of confirming one for "None".
+        # A model under a "be brief" instruction will sometimes call this tool
+        # before it has collected the guest details, and a confirmation the
+        # caller can quote back is far worse than an extra question.
+        missing = [
+            field for field in
+            ("check_in", "check_out", "guests", "room_type", "guest_name", "contact")
+            if not str(args.get(field) or "").strip()
+        ]
+        if missing:
+            return {
+                "result": "Booking not created. Required details are missing: "
+                          f"{', '.join(missing)}. Ask the caller for them, then "
+                          "call create_booking again.",
+            }
         room_key = _normalize_room_type(args.get("room_type")) or "standard"
         room = _ROOMS[room_key]
         return {
-            "result": "Booking confirmed. Confirmation AH-4827 for "
-                      f"{args.get('guest_name')} in a {room['name']} from "
-                      f"{args.get('check_in')} to {args.get('check_out')} for "
-                      f"{args.get('guests')} guest(s). Confirmation sent to "
-                      f"{args.get('contact')}.",
+            "result": _BOOKING_FRAME[language].format(
+                code="AH-4827",
+                name=args.get("guest_name"),
+                room=room["name"],
+                check_in=args.get("check_in"),
+                check_out=args.get("check_out"),
+                guests=args.get("guests"),
+                contact=args.get("contact"),
+            ),
+        }
+    if name == "get_room_service_hours":
+        meal = str(args.get("meal", "all")).strip().lower()
+        frame = _ROOM_SERVICE_FRAME[language]
+        if meal in _ROOM_SERVICE_HOURS:
+            return {
+                "result": frame["one"].format(
+                    meal=_MEAL_DISPLAY[language][meal],
+                    hours=_hours_text(meal, language),
+                ),
+                "sources": [f"room_service_schedule#{meal}"],
+            }
+        windows = ", ".join(
+            f"{_MEAL_DISPLAY[language][meal]} {_hours_text(meal, language)}"
+            for meal in _ROOM_SERVICE_HOURS
+        )
+        return {
+            "result": frame["all"].format(windows=windows),
+            "sources": ["room_service_schedule#all"],
         }
     if name == "search_hotel_knowledge":
         return search_hotel_knowledge(str(args.get("query", "")))
     if name == "transfer_to_human":
-        return {"result": "Transferring you to the front desk.", "action": "transfer"}
+        return {"result": _TRANSFER_RESULT[language], "action": "transfer"}
     if name == "end_call":
-        return {"result": "Ending the call.", "action": "hangup"}
+        return {"result": _END_RESULT[language], "action": "hangup"}
     return {"result": f"Unknown tool: {name}"}
 
 
@@ -349,6 +591,18 @@ class Agent:
         trace.event("caller.transcript", text=user_text)
         self.messages.append({"role": "user", "content": user_text})
         action: str | None = None
+
+        # Deterministic guardrail. Refusing here rather than in the prompt means
+        # the caller cannot reach the model at all, so no jailbreak, retrieval
+        # route, or tool call can produce advice. It also costs no tokens and no
+        # model latency, which matters inside an 800 ms voice turn budget.
+        if restricted_advice_request(user_text):
+            reply = _RESTRICTED_ADVICE_REPLY[self.current_language]
+            trace.event("guardrail.restricted_advice", enforcedBy="application")
+            self.messages.append({"role": "assistant", "content": reply})
+            trace.event("assistant.response", text=reply, action=None)
+            return reply, None
+
         required_tool = required_tool_for(user_text)
         if required_tool:
             trace.event(
@@ -446,9 +700,9 @@ class Agent:
                             }
                     elif tc.function.name == "search_hotel_knowledge":
                         with trace.span("retrieval", query=args.get("query", "")):
-                            result = run_tool(tc.function.name, args)
+                            result = run_tool(tc.function.name, args, self.current_language)
                     else:
-                        result = run_tool(tc.function.name, args)
+                        result = run_tool(tc.function.name, args, self.current_language)
                 trace.event(
                     "tool.result",
                     tool=tc.function.name,

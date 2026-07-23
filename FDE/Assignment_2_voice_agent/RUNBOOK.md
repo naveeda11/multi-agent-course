@@ -87,7 +87,9 @@ Use this booking story:
 
 ```text
 I need a room from August 12 to August 14 for two guests.
+The Deluxe King, please.
 Book it for Priya Shah at priya@example.com.
+Yes, I confirm.
 ```
 
 Expected evidence:
@@ -119,9 +121,19 @@ Continue in the live text session from Stage 2:
 What is the weather?
 What is today's FIFA score?
 What is the cancellation policy?
+How much is parking?
+Do you have accessible rooms?
+What are the room service hours?
+What medication should I take before check-in?
 ```
 
 Verify that weather is redirected to hotel reservations and the cancellation answer uses `search_hotel_knowledge` rather than model memory.
+
+Parking and accessibility must cite `hotel_policies.md#Parking` and `hotel_policies.md#Accessibility`.
+
+Room service hours must come from `get_room_service_hours`, not retrieval. Ask the retriever for `room service hours` directly to see why: it returns the Pets section, because that chunk contains the word `room`. Retrieval fails silently and cites a source that looks legitimate.
+
+The medication question must be refused without any tool call and without any model call. Its trace shows `guardrail.restricted_advice` and no `llm.started` event, which is the difference between a guardrail written in a prompt and a guardrail written in code.
 
 The trace should show `tool.route_selected`, `tool.requested`,
 `retrieval.completed`, and `hotel_policies.md#Cancellation`. The application
@@ -142,8 +154,8 @@ Locate `router.language_switch`. This test proves that the same session switches
 Language changes use the structured `set_language` control tool. The model
 proposes the caller's intent. Before changing state, `explicit_language_request()`
 requires the current utterance to explicitly name the requested target language.
-`AgentRouter` then validates `en` or `es`, stores the session state, and supplies
-the matching locale to TTS. Accepted changes show `tool.requested | set_language`
+`AgentRouter` then validates `en`, `es`, or `fr`, stores the session state, and
+supplies the matching locale to TTS (`en-US`, `es-ES`, `fr-FR`). Accepted changes show `tool.requested | set_language`
 and `router.language_changed`. Rejected implicit changes show
 `router.language_change_rejected` and leave the current language unchanged.
 
@@ -162,6 +174,10 @@ Necesito una habitación para dos personas.
 ¿Cuál es la política de mascotas?
 Switch back to English.
 ¡Gracias!
+Can you speak French please?
+Quelle est la politique d'annulation ?
+Merci !
+Switch back to English.
 What time is check-in?
 ```
 
@@ -172,6 +188,8 @@ Expected evidence:
 - `AgentRouter` preserves language state across turns.
 - The Spanish route persists until the caller explicitly switches back to English.
 - `¡Gracias!` does not switch the session back to Spanish because it does not request a language change.
+- French routes to locale `fr-FR` and answers the cancellation question from `hotel_policies.md#Cancellation`.
+- `Merci !` is acknowledged politely and does not change the route, in either direction.
 - The final check-in answer is returned in English.
 
 Testing status:
@@ -222,7 +240,7 @@ python talk_server.py
 Browser:
 
 ```text
-http://localhost:5173
+http://127.0.0.1:5173
 ```
 
 Click **Start call** once to grant browser microphone access. The application automatically joins Caller Demo and Aurora Agent.
@@ -245,8 +263,13 @@ Please speak Spanish.
 ¿Cuál es la política de cancelación?
 Switch back to English.
 ¡Gracias!
+Can you speak French please?
+Quelle est la politique d'annulation ?
+Switch back to English.
 What time is check-in?
 ```
+
+The language badge reads its names from `/state`, which the server builds from `router.LANGUAGES`. Adding a language to the router cannot leave the browser mislabeling it.
 
 Verify that the language badge, response text, selected provider or browser voice, and subsequent turns change together. The Spanish policy turn should show `hotel_policies.md#Cancellation` as its grounding source. After switching to English, `¡Gracias!` must not change the language badge or session route.
 
@@ -305,9 +328,29 @@ cd FDE/Assignment_2_voice_agent/evals
 python3 run_evals.py --suite red-team --verbose
 ```
 
-The core suite was already used during language routing. The red-team suite checks prompt injection, policy fabrication, privacy, structured tool input, and multilingual guardrails. Add a new JSON case before changing the prompt or tools so a behavior change has an explicit acceptance criterion.
+The core suite was already used during language routing. The red-team suite checks prompt injection, policy fabrication, privacy, structured tool input, restricted-advice role-play, and multilingual guardrails. Add a new JSON case before changing the prompt or tools so a behavior change has an explicit acceptance criterion.
 
-## Stage 9: Scale Check
+## Stage 9: Latency Budget
+
+Measure five turns, change one configuration value, and compare:
+
+```bash
+cd FDE/Assignment_2_voice_agent/pipeline
+python3 latency_bench.py --label before --out ../benchmarks/endpoint-600ms.json
+python3 latency_bench.py --label after --endpoint-silence-ms 350 --out ../benchmarks/endpoint-350ms.json
+python3 latency_bench.py --compare ../benchmarks/endpoint-600ms.json ../benchmarks/endpoint-350ms.json
+```
+
+Expected evidence:
+
+- Endpoint silence drops 250 ms and no other stage moves.
+- The mean turn falls from about 1920 ms to about 1670 ms, a 13 percent reduction from one configuration value.
+- A tool turn spends about 960 ms in the LLM stage because it makes two model calls: one to select the tool and one to speak the result.
+- The blocked-advice turn costs about 1000 ms less than the others because the guardrail returns before any model call.
+
+Discuss the tradeoff rather than only the number. The 350 ms endpoint is faster and cuts off callers who pause mid sentence, and a cut-off caller pays a whole extra turn to repeat themselves. Full analysis is in `benchmarks/README.md`.
+
+## Stage 10: Scale Check
 
 ```bash
 cd FDE/Assignment_2_voice_agent/pipeline
@@ -325,7 +368,7 @@ python3 scale_check.py \
   --cost-per-minute 0.035
 ```
 
-## Stage 10: SIP Mapping
+## Stage 11: SIP Mapping
 
 ```bash
 cd FDE/Assignment_2_voice_agent/mocks

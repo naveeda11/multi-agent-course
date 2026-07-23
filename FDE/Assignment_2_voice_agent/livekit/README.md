@@ -28,7 +28,7 @@ python create_room.py
 python talk_server.py
 ```
 
-Open `http://localhost:5173`, click **Start call**, and allow microphone access. Caller Demo and Aurora Agent join `aurora-demo-room` automatically.
+Open `http://127.0.0.1:5173`, click **Start call**, and allow microphone access. Caller Demo and Aurora Agent join `aurora-demo-room` automatically.
 
 The browser shows:
 

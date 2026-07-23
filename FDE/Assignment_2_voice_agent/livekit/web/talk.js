@@ -32,6 +32,8 @@ const metrics = {
 };
 
 const sessionId = `browser-${crypto.randomUUID()}`;
+// Filled from /state so the badge cannot drift from the router's language set.
+const languageNames = {};
 let turnCounter = 0;
 let callerRoom = null;
 let agentRoom = null;
@@ -375,7 +377,8 @@ async function sendAudioToAgent(audioBlob) {
       .join(" | ");
     addTranscript("agent", payload.reply, meta);
     providerEl.textContent = `Provider: ${payload.provider} | ${payload.model} | ${ttsMeta}`;
-    languageEl.textContent = payload.language === "es" ? "Spanish" : "English";
+    languageEl.textContent = languageNames[payload.language]
+      || (payload.language || "en").toUpperCase();
     renderSources(payload.sources);
     renderTrace(payload.trace);
     agentBusy = false;
@@ -616,6 +619,9 @@ async function loadState() {
     const response = await fetch("/state");
     const state = await response.json();
     providerEl.textContent = `Provider: ${state.agentProvider}`;
+    for (const language of state.languages || []) {
+      languageNames[language.code] = language.name;
+    }
   } catch {
     providerEl.textContent = "Provider: unavailable";
   }

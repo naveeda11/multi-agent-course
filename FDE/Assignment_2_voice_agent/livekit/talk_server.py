@@ -1,6 +1,6 @@
 """Serve a tiny browser client for testing local LiveKit audio.
 
-Run this after `./start_local_server.sh`, then open http://localhost:5173.
+Run this after `./start_local_server.sh`, then open http://127.0.0.1:5173.
 """
 
 from __future__ import annotations
@@ -21,7 +21,7 @@ from livekit import api
 
 from env_loader import load_env_files
 
-HOST = os.getenv("TALK_HOST", "localhost")
+HOST = os.getenv("TALK_HOST", "127.0.0.1")
 PORT = int(os.getenv("TALK_PORT", "5173"))
 ROOT = Path(__file__).resolve().parent
 ASSIGNMENT_ROOT = ROOT.parent
@@ -70,6 +70,18 @@ def _new_agent():
     from providers import make_provider
 
     return Agent(make_provider(_agent_provider_name()))
+
+
+def _supported_languages() -> list[dict]:
+    """Read the supported set from the router so the UI cannot drift from it."""
+    if str(PIPELINE_ROOT) not in sys.path:
+        sys.path.insert(0, str(PIPELINE_ROOT))
+    from router import LANGUAGES
+
+    return [
+        {"code": code, "name": config["name"], "locale": config["locale"]}
+        for code, config in LANGUAGES.items()
+    ]
 
 
 def _get_session(session_id: str):
@@ -275,7 +287,7 @@ class Handler(SimpleHTTPRequestHandler):
                 "livekitRoom": _livekit_room(),
                 "livekitUrl": _livekit_url(),
                 "agentProvider": _agent_provider_name(),
-                "languages": ["en", "es"],
+                "languages": _supported_languages(),
             })
         if parsed.path != "/token":
             return super().do_GET()

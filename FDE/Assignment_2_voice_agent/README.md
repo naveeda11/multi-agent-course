@@ -11,15 +11,18 @@ caller audio -> VAD and endpointing -> STT -> AgentRouter -> LLM -> RAG and tool
 ## Capabilities
 
 - Hotel availability and mock booking tools
+- Room service hours as an operational tool, separate from policy retrieval
 - Hotel-only conversational guardrails
+- Deterministic medical, legal, and financial advice refusal enforced in application code
 - Local policy RAG using SQLite FTS5
-- English and Spanish session routing
+- English, Spanish, and French session routing
 - Mock, OpenAI, and Groq provider modes
 - Local microphone capture with WebRTC VAD
 - Browser VAD with adaptive noise calibration and playback barge-in
 - Per-turn structured telemetry and a browser trace timeline
 - Local LiveKit room with caller and agent participants
 - Deterministic task evaluation and red-team suites
+- Five-turn latency benchmark with a before and after configuration comparison
 - Zero-cost capacity calculator for DAU and concurrency planning
 - SIP and IVR simulations for telephony mapping
 
@@ -29,15 +32,21 @@ caller audio -> VAD and endpointing -> STT -> AgentRouter -> LLM -> RAG and tool
 Assignment_2_voice_agent/
 |-- README.md
 |-- RUNBOOK.md
+|-- FDE_ANALYSIS.md
 |-- knowledge/
 |   `-- hotel_policies.md
 |-- evals/
 |   |-- core.json
 |   |-- red_team.json
 |   `-- run_evals.py
+|-- benchmarks/
+|   |-- README.md
+|   |-- endpoint-600ms.json
+|   `-- endpoint-350ms.json
 |-- pipeline/
 |   |-- agent.py
 |   |-- knowledge.py
+|   |-- latency_bench.py
 |   |-- providers.py
 |   |-- router.py
 |   |-- scale_check.py
@@ -71,9 +80,15 @@ Try these turns:
 ```text
 What is the weather?
 What is the cancellation policy?
+How much is parking?
+Do you have accessible rooms?
+What are the room service hours?
 I need a room from August 12 to August 14 for two guests.
+What medication should I take before check-in?
 Please speak Spanish.
 ¿Cuál es la política de mascotas?
+Can you speak French please?
+Quelle est la politique d'annulation ?
 Connect me to the front desk.
 ```
 
@@ -154,7 +169,7 @@ python create_room.py
 python talk_server.py
 ```
 
-Open `http://localhost:5173`, click **Start call**, allow microphone access, and speak naturally. The browser automatically joins the caller and Aurora participants, detects caller turns, displays grounding sources, and shows stage telemetry.
+Open `http://127.0.0.1:5173`, click **Start call**, allow microphone access, and speak naturally. The browser automatically joins the caller and Aurora participants, detects caller turns, displays grounding sources, and shows stage telemetry.
 
 The LiveKit bridge honors `TTS_BACKEND` from `pipeline/.env`. With `provider`, the server synthesizes WAV audio using `TTS_MODEL` and `TTS_VOICE`, and the UI labels the response with the selected voice. With `system` or `mock`, the browser uses its installed speech voice.
 
@@ -180,12 +195,18 @@ Aurora uses different boundaries for different kinds of truth:
 | Policies, parking, pets, breakfast, accessibility | Local RAG | Read-oriented knowledge with source evidence |
 | Availability and room rates | Tool call | Dynamic operational truth |
 | Booking creation | Tool call | Auditable state mutation |
+| Room service hours | Tool call | Operational schedule that changes without a document revision |
 | Language switching | `set_language` control tool | Validated session state and matching TTS locale |
+| Medical, legal, and financial advice | Application-code refusal | A safety decision, not a model judgment |
 | Transfer and hangup | Control action | Runtime and telephony behavior |
 
-The local retriever indexes Markdown sections with SQLite FTS5. It includes English and Spanish query expansion while keeping the source document unchanged.
+The local retriever indexes Markdown sections with SQLite FTS5. It includes English, Spanish, and French query expansion while keeping the source document unchanged.
 
 Aurora uses hybrid tool routing. High-confidence policy and amenity phrases select `search_hotel_knowledge` in application code before the first model call. Other tool decisions remain automatic. This keeps retrieval reliable after interruptions or off-topic turns without routing a request such as `cancel my reservation` into policy search.
+
+Room service intent is checked before the knowledge phrases, because `room service breakfast` contains `breakfast`. The ordering matters for a second reason: asking the sparse index for `room service hours` returns the Pets section, since that chunk contains the word `room`. Retrieval fails silently and cites a legitimate-looking source, so any question whose answer changes on an operational timescale belongs behind a tool.
+
+Medical, legal, and financial requests are refused by `restricted_advice_request()` before the router and before the first model call. Enforcing this in code rather than in the system prompt means no jailbreak or role-play frame can reach a model that is never contacted, the refusal costs no tokens, and the turn is about 1000 ms faster. See [FDE_ANALYSIS.md](FDE_ANALYSIS.md) for the reasoning and the accepted tradeoffs.
 
 ## Telemetry
 
@@ -219,7 +240,22 @@ python3 run_evals.py --suite core --verbose
 python3 run_evals.py --suite red-team --verbose
 ```
 
-The suites verify expected tools, actions, languages, sources, allowed text, and forbidden text. The red-team set covers prompt injection, policy fabrication, privacy, structured tool input, and guardrails after a language switch.
+The suites verify expected tools, actions, languages, sources, allowed text, and forbidden text. The red-team set covers prompt injection, policy fabrication, privacy, structured tool input, restricted-advice role-play, and guardrails after a language switch.
+
+## Latency Benchmark
+
+Measure where a turn's time goes, change one configuration value, and compare:
+
+```bash
+cd FDE/Assignment_2_voice_agent/pipeline
+python3 latency_bench.py --label before --out ../benchmarks/endpoint-600ms.json
+python3 latency_bench.py --label after --endpoint-silence-ms 350 --out ../benchmarks/endpoint-350ms.json
+python3 latency_bench.py --compare ../benchmarks/endpoint-600ms.json ../benchmarks/endpoint-350ms.json
+```
+
+Local stages are measured. Against `PROVIDER=mock` there is no network, so STT, LLM, and TTS round trips are added as documented assumptions rather than reported as zero, and `--compare` refuses to mix a simulated run with a measured one. Run with a live provider and `--no-simulate-network` for real numbers.
+
+Recorded results and analysis are in [benchmarks/README.md](benchmarks/README.md).
 
 ## Scale Check
 

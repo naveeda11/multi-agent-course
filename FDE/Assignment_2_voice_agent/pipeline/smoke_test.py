@@ -42,9 +42,14 @@ def main() -> None:
         "I need a room from August 12 to August 14 for two guests.",
         expect_in="Standard Queen",
     )
-    # Booking path -> confirmation
+    turn("The Deluxe King, please.", expect_in="name")
+    # Booking path -> read-back, explicit confirmation, then tool confirmation
     turn(
         "Yes, book it for Priya Shah at priya@example.com.",
+        expect_in="Please confirm",
+    )
+    turn(
+        "Yes, I confirm.",
         expect_in="AH-4827",
     )
     # Transfer path -> SIP REFER
