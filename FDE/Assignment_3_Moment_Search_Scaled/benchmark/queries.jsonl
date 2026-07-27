@@ -1,0 +1,15 @@
+{"q": "what does the survey say about hybrid retrieval strategies", "expect": {"kind": "paper", "source_id": "doc_62a5373250", "pages": [5, 9, 14, 18]}}
+{"q": "what are the three RAG paradigms compared in the survey", "expect": {"kind": "paper", "source_id": "doc_62a5373250", "pages": [2, 3, 4, 5]}}
+{"q": "what does the RAG survey say about chunking strategies", "expect": {"kind": "paper", "source_id": "doc_62a5373250", "pages": [8]}}
+{"q": "what is the formula for scaled dot-product attention", "expect": {"kind": "paper", "source_id": "doc_9a505549bb", "pages": [4, 5]}}
+{"q": "what BLEU score did the Transformer achieve on English to German translation", "expect": {"kind": "paper", "source_id": "doc_9a505549bb", "pages": [1, 8]}}
+{"q": "how does the paper on retrieval augmented generation combine parametric and non-parametric memory", "expect": {"kind": "paper", "source_id": "doc_571dff0485", "pages": [1, 2]}}
+{"q": "what is the difference between RAG-Token and RAG-Sequence", "expect": {"kind": "paper", "source_id": "doc_571dff0485", "pages": [3, 4]}}
+{"q": "what does the large language model survey say about emergent abilities", "expect": {"kind": "paper", "source_id": "doc_d80f852cc8", "pages": [2, 18, 36]}}
+{"q": "the slide with the lecture plan", "expect": {"kind": "deck", "source_id": "doc_211a35367b", "slides": [2, 9, 36]}}
+{"q": "the slide explaining distributional semantics", "expect": {"kind": "deck", "source_id": "doc_211a35367b", "slides": [21]}}
+{"q": "the slide showing the softmax function", "expect": {"kind": "deck", "source_id": "doc_211a35367b", "slides": [30]}}
+{"q": "the slides about the word2vec objective function", "expect": {"kind": "deck", "source_id": "doc_211a35367b", "slides": [2, 9, 27, 28, 36]}}
+{"q": "how does the attention mechanism work in a transformer", "expect": {"kind": "video", "source_id": "yt_eMlx5fFNoYc"}}
+{"q": "a short explanation of what large language models are", "expect": {"kind": "video", "source_id": "yt_LPZh9BOjkQs"}}
+{"q": "the talk about jailbreaks and prompt injection attacks on LLMs", "expect": {"kind": "video", "source_id": "yt_wjZofJX0v4M"}}
