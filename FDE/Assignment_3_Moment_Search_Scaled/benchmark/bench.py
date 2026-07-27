@@ -83,6 +83,29 @@ def p95(xs):
     return statistics.quantiles(xs, n=100)[94] if len(xs) >= 20 else (max(xs) if xs else 0.0)
 
 
+def combined_error_rate(batch_error_pct, request_failures, request_attempts):
+    """Do not let a large successful population dilute a failed backfill."""
+    request_pct = request_failures / max(request_attempts, 1) * 100.0
+    return max(batch_error_pct, request_pct), request_pct
+
+
+def batch_error_rate(total, register_failures, ids, rows):
+    """Count failed, skipped, missing, and timed-out registered sources."""
+    not_indexed = sum(
+        1 for source_id in ids
+        if rows.get(source_id, {}).get("status") != "indexed"
+    )
+    return (register_failures + not_indexed) / max(total, 1) * 100.0
+
+
+def batch_resume_lines(lines, ids):
+    """Checkpoint evidence must belong to the just-created resilience batch."""
+    return [
+        line for line in lines
+        if "resume from" in line and any(source_id in line for source_id in ids)
+    ]
+
+
 def _sse_citations(q, top_k=10, timeout=60, user=None):
     """Read /ask_stream until the citations event; return the citations list."""
     url = f"{BASE}/ask_stream?" + urllib.parse.urlencode({"q": q, "top_k": top_k})
@@ -111,15 +134,20 @@ def _sources(user=None):
 
 
 def _register_batch(batch, user):
-    ids = []
+    ids, failures = [], 0
     for uri, kind, title in batch:
         st, body, _ = _req("POST", "/admin/documents", token=ADMIN, user=user,
                            body={"uri": uri, "kind": kind, "title": title})
         if st != 202:
+            failures += 1
             print(f"  [warn] register {title} -> {st}: {body[:120]}")
             continue
-        ids.append(json.loads(body)["id"])
-    return ids
+        try:
+            ids.append(json.loads(body)["id"])
+        except (KeyError, TypeError, json.JSONDecodeError):
+            failures += 1
+            print(f"  [warn] register {title} -> malformed 202 body: {body[:120]}")
+    return ids, failures
 
 
 def _wait_terminal(ids, user, timeout_s=1200, poll_s=10):
@@ -147,15 +175,20 @@ def measure_accept_latency(n=30):
         _req("POST", "/admin/documents", token=ADMIN, user=user,
              body={"uri": f"https://example.com/warmup_{i}.pdf",
                    "kind": "paper", "title": "warmup"})
-    lat, ids = [], []
+    lat, ids, failures = [], [], 0
     for i in range(n):
         st, body, ms = _req("POST", "/admin/documents", token=ADMIN, user=user,
                             body={"uri": f"https://example.com/probe_{i}.pdf",
                                   "kind": "paper", "title": f"probe {i}"})
         if st == 202:
             lat.append(ms)
-            ids.append(json.loads(body)["id"])
-    return (p95(lat) if lat else float("inf")), user, ids
+            try:
+                ids.append(json.loads(body)["id"])
+            except (KeyError, TypeError, json.JSONDecodeError):
+                failures += 1
+        else:
+            failures += 1
+    return (p95(lat) if lat else float("inf")), user, ids, failures, n
 
 
 def _cleanup_probes(user, ids):
@@ -169,13 +202,15 @@ def _cleanup_probes(user, ids):
 
 def measure_search_p95(n=40):
     q = "what does the survey say about hybrid retrieval"
-    lat = []
+    lat, failures = [], 0
     for _ in range(n):
         t0 = time.perf_counter()
         cites = _sse_citations(q)
         if cites is not None:
             lat.append((time.perf_counter() - t0) * 1000)
-    return p95(lat) if lat else float("inf")
+        else:
+            failures += 1
+    return (p95(lat) if lat else float("inf")), failures, n
 
 
 def measure_recall(top_k=10):
@@ -189,10 +224,13 @@ def measure_recall(top_k=10):
     if missing:
         print(f"  [warn] labeled corpus not fully indexed; missing: {sorted(missing)}")
 
-    hits = 0
+    hits, failures = 0, 0
     for query in queries:
         exp = query["expect"]
-        cites = _sse_citations(query["q"], top_k=top_k) or []
+        response = _sse_citations(query["q"], top_k=top_k)
+        if response is None:
+            failures += 1
+        cites = response or []
         hit = False
         for c in cites:
             if c.get("sourceId") != exp["source_id"]:
@@ -208,7 +246,7 @@ def measure_recall(top_k=10):
                 break
         hits += hit
         print(f"  [{'hit ' if hit else 'MISS'}] {query['q'][:60]}")
-    return hits / len(queries) if queries else 0.0
+    return (hits / len(queries) if queries else 0.0), failures, len(queries)
 
 
 def run_backfill_and_measure():
@@ -216,12 +254,12 @@ def run_backfill_and_measure():
     drains, and derive throughput (total chunks / wall seconds) at completion."""
     user = f"bench-{int(time.time())}"
     t_start = time.time()
-    ids = _register_batch(BACKFILL, user)
+    ids, register_failures = _register_batch(BACKFILL, user)
     print(f"  backfill: {len(ids)} documents registered under {user}")
 
     # Measure search latency while the queue is demonstrably busy.
     time.sleep(5)  # let the dispatcher admit the first docs
-    during = measure_search_p95()
+    during, search_failures, search_attempts = measure_search_p95()
     busy = [s for s in _sources(user)
             if s["status"] not in ("indexed", "failed", "skipped")]
     if not busy:
@@ -232,13 +270,19 @@ def run_backfill_and_measure():
     t_end = time.time()
     done = [s for s in rows.values() if s["status"] == "indexed"]
     failed = [s for s in rows.values() if s["status"] != "indexed"]
+    missing = [source_id for source_id in ids if source_id not in rows]
     chunks = sum(s.get("chunks") or 0 for s in done)
     wall = max(t_end - t_start, 1e-6)
     print(f"  backfill: {len(done)}/{len(ids)} indexed, {chunks} chunks "
-          f"in {wall:.0f}s" + (f", failed: {[s['id'] for s in failed]}" if failed else ""))
+          f"in {wall:.0f}s"
+          + (f", failed: {[s['id'] for s in failed]}" if failed else "")
+          + (f", missing/timed-out: {missing}" if missing else ""))
     for s in sorted(done, key=lambda x: x["id"]):
         print(f"    {s['title'][:30]:30s} pages={s.get('pages')} chunks={s.get('chunks')}")
-    return during, chunks / wall, len(failed) / max(len(ids), 1) * 100.0
+    batch_error_pct = batch_error_rate(
+        len(BACKFILL), register_failures, ids, rows)
+    return (during, chunks / wall, batch_error_pct,
+            search_failures, search_attempts)
 
 
 def _compose(*args):
@@ -251,17 +295,30 @@ def run_resilience():
     prod the platform's restart policy does this), and assert: nothing lost,
     every source reaches indexed, finished stages resumed from checkpoints."""
     user = f"bench-res-{int(time.time())}"
-    ids = _register_batch(RESILIENCE_BATCH, user)
+    ids, register_failures = _register_batch(RESILIENCE_BATCH, user)
     print(f"  registered {len(ids)} sources under {user}")
+    if register_failures or len(ids) != len(RESILIENCE_BATCH):
+        print(f"  [fail] registration incomplete: {register_failures} failed")
+        return False
 
     killed = False
-    for _ in range(60):
+    for _ in range(180):
         rows = {s["id"]: s for s in _sources(user) if s["id"] in set(ids)}
-        mid = [s for s in rows.values()
-               if s["status"] in ("fetching", "parsing", "enriching", "embedding")]
+        # Wait until parsing is definitely checkpointed. Killing during fetch or
+        # parse proves no loss, but cannot prove a completed stage was resumed.
+        mid = [s for s in rows.values() if s["status"] == "embedding"]
         if mid:
             r = _compose("ps", "-q", "worker")
-            worker = r.stdout.split()[0] if r.stdout.split() else None
+            workers = r.stdout.split()
+            worker = None
+            for candidate in workers:
+                logs = subprocess.run(
+                    ["docker", "logs", "--since", "5m", candidate],
+                    capture_output=True, text=True, timeout=30)
+                if any(s["id"] in (logs.stdout + logs.stderr) for s in mid):
+                    worker = candidate
+                    break
+            worker = worker or (workers[0] if workers else None)
             if not worker:
                 print("  [fail] no worker container found to kill")
                 return False
@@ -292,13 +349,13 @@ def run_resilience():
     # Evidence that finished stages were NOT redone: the fresh runs load the
     # fetch/parse checkpoints instead of re-downloading and re-parsing.
     r = _compose("logs", "worker", "--since", "15m")
-    resumes = [l for l in r.stdout.splitlines() if "resume from" in l or "reconciler" in l]
+    resumes = batch_resume_lines(r.stdout.splitlines(), ids)
     for line in resumes[-6:]:
         print(f"    {line.strip()[:120]}")
-    if killed and ok and not any("resume from" in l for l in resumes):
-        print("  [warn] no checkpoint-resume lines found — did the kill land "
-              "before any stage finished?")
-    return ok
+    resumed = bool(resumes)
+    if killed and ok and not resumed:
+        print("  [fail] no batch-specific checkpoint-resume evidence found")
+    return ok and resumed
 
 
 def main():
@@ -325,24 +382,38 @@ def main():
     # Runs FIRST: the accept-latency probes enter the same fair queue, so
     # measuring them earlier would let the probe backlog steal worker slots
     # from the backfill window and understate throughput.
-    idle = measure_search_p95()
+    idle, idle_failures, idle_attempts = measure_search_p95()
     print(f"  idle search p95: {idle:.0f}ms")
-    during, throughput, err_pct = run_backfill_and_measure()
+    (during, throughput, batch_err_pct,
+     during_failures, during_attempts) = run_backfill_and_measure()
     ratio = (during / idle) if idle else float("inf")
     gate("search_p95_during_ingest_ratio", round(ratio, 2),
          ratio <= SLA["search_p95_during_ingest_ratio_max"], SLA["search_p95_during_ingest_ratio_max"])
 
     # 2. recall@10 on labeled queries
-    recall = measure_recall()
+    recall, recall_failures, recall_attempts = measure_recall()
     gate("recall_at_10", round(recall, 2), recall >= SLA["recall_at_10_min"], SLA["recall_at_10_min"])
 
     # 3. accept latency (probes queue + fail-fast behind everything measured)
-    a, probe_user, probe_ids = measure_accept_latency()
+    a, probe_user, probe_ids, accept_failures, accept_attempts = measure_accept_latency()
     gate("accept_latency_p95_ms", round(a, 1), a <= SLA["accept_latency_p95_ms"], SLA["accept_latency_p95_ms"])
 
     gate("ingest_throughput_chunks_per_s", round(throughput, 1),
          throughput >= SLA["ingest_throughput_min_chunks_per_s"], SLA["ingest_throughput_min_chunks_per_s"])
-    gate("error_rate_pct", round(err_pct, 1), err_pct <= SLA["error_rate_max_pct"], SLA["error_rate_max_pct"])
+    request_failures = (idle_failures + during_failures +
+                        recall_failures + accept_failures)
+    request_attempts = (idle_attempts + during_attempts +
+                        recall_attempts + accept_attempts)
+    # Keep the batch and request populations separate: diluting one failed
+    # eight-document backfill registration across 100 successful searches would
+    # otherwise make a 12.5% ingest failure look like <1% overall.
+    err_pct, request_error_pct = combined_error_rate(
+        batch_err_pct, request_failures, request_attempts)
+    print(f"  error detail: batch={batch_err_pct:.1f}%, "
+          f"requests={request_error_pct:.1f}% "
+          f"({request_failures}/{request_attempts})")
+    gate("error_rate_pct", round(err_pct, 1),
+         err_pct <= SLA["error_rate_max_pct"], SLA["error_rate_max_pct"])
 
     _cleanup_probes(probe_user, probe_ids)
 

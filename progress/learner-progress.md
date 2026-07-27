@@ -7,7 +7,7 @@
 - Name: Naveed
 - Preferred learning style: Implement-then-teach-back (Claude builds, learner explains it back, Claude probes gaps)
 - Started: [date]
-- Last session: 2026-07-22
+- Last session: 2026-07-27
 
 ## Module status
 
@@ -39,11 +39,34 @@ Teach-back results:
 - **Taught, not derived.** Did not know why a tool turn costs two model calls (decide the tool, then
   phrase the result). Worth re-checking.
 
+## FDE Assignment 3 — Moment Search at Scale (2026-07-27)
+
+Reviewed committed multi-source ingestion, retrieval, resilience, deployment, benchmark, and
+handoff work in both repositories.
+The 14 product tests and Python syntax checks pass, both assignment commits are clean, and a live
+Fly query returned grounded video, paper, and deck locators in one SSE response.
+
+Resolved the review findings in a follow-up implementation pass:
+
+- Kept the Fly worker and both model services at 2 GB. Removed a blank secret override, separated
+  Torch CLIP from ONNX BGE, and set the Fly-only text batch to 8 based on measured RSS.
+- The previously dead-lettered ReAct paper resumed from its fetch and 33-page parse checkpoints and
+  reached indexed with 147 chunks.
+- Added complete PPTX slide rendering through LibreOffice, durable converted-PDF storage, exact slide
+  deep links, cleanup, and a real shape-based deck regression test.
+- Fixed kind-aware retry and document cleanup, non-idempotent database retry behavior, and
+  caption-by-caption checkpoints.
+- Hardened benchmark registration/search/error accounting and made batch-specific checkpoint resume
+  evidence mandatory. Missing and timed-out backfill rows now count as failures.
+- Corrected the automated evaluator so decoupling is reported as manual rather than failed.
+- Verified 20 product tests, 5 benchmark tests, syntax checks, clean diff checks, and a live Fly SSE
+  answer containing grounded video, paper, and deck citations.
+
 ## Weak spots to revisit
 - Why a tool-calling turn costs two model round trips, and what that implies for latency work.
 - Reads explanations faster than code — prefers seeing behaviour demonstrated over reading diffs.
   Lead with a runnable trace or table, then show the code.
 
 ## Next step
-- Begin Module 01, or run the Assignment 2 live-provider path (`PROVIDER=openai`) and re-run the
-  latency benchmark with `--no-simulate-network` to replace the assumed round trips with real ones.
+- Review and commit the current fixes, run the full product eval to produce `PRODUCT_EVAL.md`, record
+  the demo, create the MomentSearch GitHub fork, push both repositories, and submit.

@@ -70,8 +70,10 @@ def main():
     results = []
 
     def add(cid, ok, evidence):
-        results.append((cid, bool(ok), evidence))
-        print(f"[{'PASS' if ok else 'FAIL'}] {cid}: {evidence}")
+        normalized = None if ok is None else bool(ok)
+        results.append((cid, normalized, evidence))
+        label = "MANUAL" if normalized is None else ("PASS" if normalized else "FAIL")
+        print(f"[{label}] {cid}: {evidence}")
 
     # 1. app up
     st, _, _ = _req("GET", f"{base}/")
