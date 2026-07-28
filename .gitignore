@@ -14,3 +14,6 @@ venv/
 market-sizing-sdk/
 # FDE Assignment 3: symlink to the momentsearch fork (its own repo)
 FDE/Assignment_3_Moment_Search_Scaled/momentsearch
+
+# Private learner notes
+progress/learner-progress.md
