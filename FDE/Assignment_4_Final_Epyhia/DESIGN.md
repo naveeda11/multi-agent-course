@@ -71,13 +71,24 @@ Node backend workers
 Storage: Neon DB and Cloudflare R2 
 Authentication: Auth0 
 
-Two process groups
+ process groups
 1) web process group is available from the public internet
 2) gated process group contains API keys and is accessible only via the web process group. 
+Public app and agent workers dont contain any credentials (OpenAI, Cloudflare, Stripe, Veo, etc..). An Action Gate will contain these credentials - exclusively. 
+
+
 Gated processes are heavily integrated with human reviews before irreversible actions (aside from customer initiated spending)  . both process groups deploy to Fly.io; the gated app is private-network only, reachable solely from the web app
+Agents can call - based on their capabilities 
+- /model_call
+- /deploy
+- /checkout-session
+- /video-render
+- /publish
 
-
+Action Gate will check for approval (either human or via capability) and idempotency via audit record. 
+This means that agents cannot reach those providers, even if misprompted. 
 Deployment, marketing publishing, video rendering, LLM calls will be within the credentialed process group (audit and cost logging - not exposed to public web directly) 
+Note that stripe checkout contains customer approval but cloudflare deployment, Video generation and social media or emails require admin approval. 
 API Gateway (web process group)
 
 
