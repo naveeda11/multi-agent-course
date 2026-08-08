@@ -1,0 +1,17 @@
+# Local course state and document backup
+DESIGN.rtf
+progress/
+
+# Secrets
+.env
+.env.*
+!.env.example
+
+# Dependencies, caches, and generated build output
+node_modules/
+dist/
+coverage/
+.cache/
+.wrangler/
+*.log
+.DS_Store
