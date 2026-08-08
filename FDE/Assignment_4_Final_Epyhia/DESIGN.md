@@ -54,10 +54,27 @@ Business operations flow for party rental
 - create Stripe checkout session (test mode) - idempotency key is derived from reservation ID and sent to Stripe. Stripe Session URL returned. 
 - Stripe redirects back - web hook (checkout.session.completed) is invoked which flips reservation to Confirmed. Stripe signature is verified when updating the reservation. 
 
+Business Customer Order Persistence
+Table: Orders 
+id, created_at, tenant_id, reservation_id, stripe_checkout_session, amount, currency, status, payment_timestamp
+Both reservation and stripe_checkout_session are separately unique
 
+Table: webhook_events 
+id, created_at, stripe_event_id (primary key)
+
+Characteristics:
+Stripe signature verification in Tier 3 before processing.
+Transactional: records the event, inserts the order, and confirms the reservation. Otherwise rollback
+Duplicate events return success without creating anything new.
+Customer transaction status is done via DB querying (not simply success redirect)
+Add check for stripe amount and currency match to reservation table 
+Before inserting an order, payment_status must be PAID. Insert exactly one order, change reservation status to CONFIRMED (from PENDING). Commit txn, else rollback
+Insert the order with status = PAID and payment_timestamp from Stripe.
+Note: to avoid floating point math, prefer use cents. 
 Flow 3 - expired reservations cleanup
 Business Operations Flow for Expired Rentals (Abandoned checkout)
 If a customer reserves but never pays, we have abandoned checkouts. Use Stripe Checkout expiration web book to cancel those after 1 hr. 
+
 
 
 
