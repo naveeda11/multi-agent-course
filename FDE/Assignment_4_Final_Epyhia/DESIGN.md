@@ -19,15 +19,15 @@ Out of scope: late fees, customer alerts or reminders, backend delivery scheduli
 Flow 1 - Business Creation Flow (interactive - 2-5 minutes of time including human interactions)
 Administrator (me) logs in and in the Admin dashboard of epyhia, enters a business description prompt. 
 
-The Orchestrator/Strategist checks the completeness of the prompt
-- data exists for initial population of business catalog (Ops agent does the dB write)
+The Orchestrator/Strategist checks the completeness of the brief
+- data exists for initial population of business catalog (Ops agent request the Action Gate to do persist catalog data in DB)
 
-If the prompt is considered incomplete, getting more information is done by interactively asking the user 
+If the prompt is considered incomplete, getting more information is done by interactively asking the user through Tier 1
 
-
-Orchestrator will generate a brand identity document
-The orchestrator creates an entry for business creation which consists of 
-Business name, business id, and persists the brand doc, and creates a task list (status)
+Orchestrator produces the completed brief, brand identity document, and task plan.
+Ops will do the persistence of this info. 
+The orchestrator delegates to Ops for persistence. Ops invokes the Action Gate to create an entry for business creation which consists of 
+Business name, business id, and persists the brand doc, and creates a task list (status) along with task records. 
 
 
 One that is done - then a dashboard view is created so that the user can see the status (brand document - pending, Web Builder: Pending, Maketing: Pending)
@@ -40,7 +40,7 @@ The marketer using the brand doc, will generate the marketing copy for the websi
 The Vertical Cut video will be a 2nd Veo invocation. 
 Veo Video Generation via kdowswell/veo-tools
 
-Ops agent will be doing the initial population of the schema (including the tenant id) - this is also a task in the task list
+Ops agent will be doing the initial population of the schema (including the tenant id) via the Action gate - this is also a task in the task list
 Note: The brief should consist of the items in the prompt. If the prompt does not include them, the orchestrator gets them, the orchestrator at the end gives a fully populated prompt. 
 
 Flow 2 
@@ -79,7 +79,6 @@ All three tiers deploy to Fly.io as separate apps or services. The Action Gate i
 
 Stripe webhooks enter through Tier 1. Tier 1 and Tier 2 forward the raw request body and Stripe signature unchanged to Tier 3 for verification.
 
-Three tiers groups deploy to Fly.io; the gated app is private-network only, reachable solely from the web app
 Agents can call - based on their capabilities 
 - /model_call
 - /deploy
@@ -113,7 +112,8 @@ Orchestrator:
 Accepts the initial prompt
 Generates to brand doc
 Creates work for the Marketer, Web Builder, and Ops 
-Does not initiate deployment, video generation, or customer payment actions
+Does not invoke the Action Gate directly - delegates only to specialist agents. Does not initiate deployment, video generation, or customer payment actions It does not hold any credentials including DB. 
+
 
 Top intelligence tier: OpenAI Sol 5.6
 - the brand doc guidance will contain the key intelligent and GTM approach - need max intelligence  
@@ -144,7 +144,7 @@ Avoiding AI slop in Design
 The idea will be to parameterize this prompt template.
 
 Ops 
-Inserts into DB the initial catalog
+Asks the Action Gate to persist the initial catalog in DB
 Does not initiate deployment, video generation, , or customer payment actions
 
 Ops lower intelligence tier: OpenAI Luna 5.6
