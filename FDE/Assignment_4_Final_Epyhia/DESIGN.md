@@ -71,13 +71,15 @@ Node backend workers
 Storage: Neon DB and Cloudflare R2 
 Authentication: Auth0 
 
- process groups
-1) web process group is available from the public internet
-2) gated process group contains API keys and is accessible only via the web process group. 
-Public app and agent workers dont contain any credentials (OpenAI, Cloudflare, Stripe, Veo, etc..). An Action Gate will contain these credentials - exclusively. 
+1. Tier 1 — Public web app, reachable from the internet.
+2. Tier 2 — Private Strategist, Web Builder, Marketer, and Ops workers. Tier 2 is reachable only from Tier 1, receives scoped capability handles, has no public ingress, and holds no credentials.
+3. Tier 3 — Private Action Gate. Tier 3 is reachable only from Tier 2, has no public ingress, and exclusively holds the OpenAI, Cloudflare, Stripe, Veo, Neon, and R2 credentials.
 
+All three tiers deploy to Fly.io as separate apps or services. The Action Gate is private-network-only and reachable solely from Tier 2.
 
-Gated processes are heavily integrated with human reviews before irreversible actions (aside from customer initiated spending)  . both process groups deploy to Fly.io; the gated app is private-network only, reachable solely from the web app
+Stripe webhooks enter through Tier 1. Tier 1 and Tier 2 forward the raw request body and Stripe signature unchanged to Tier 3 for verification.
+
+Three tiers groups deploy to Fly.io; the gated app is private-network only, reachable solely from the web app
 Agents can call - based on their capabilities 
 - /model_call
 - /deploy
@@ -85,7 +87,11 @@ Agents can call - based on their capabilities
 - /video-render
 - /publish
 
-Action Gate will check for approval (either human or via capability) and idempotency via audit record. 
+Action Gate will check for capability authorization and applicable approval separately. And idempotency via audit record. 
+To be clear: Capability - the agent is allowed to request
+Admin Approval: Admin human has approved a deployment, social media publish, or video generation
+Customer Approval: via public interface Stripe
+LLM calls are part of model capability and constrained by per-run budget already approved by human.
 This means that agents cannot reach those providers, even if misprompted. 
 Deployment, marketing publishing, video rendering, LLM calls will be within the credentialed process group (audit and cost logging - not exposed to public web directly) 
 Note that stripe checkout contains customer approval but cloudflare deployment, Video generation and social media or emails require admin approval. 
@@ -93,12 +99,13 @@ API Gateway (web process group)
 
 
 Action Code (gated) needs
-- run_id, tenant_id, agent_name, action, destination_url, destination_params, cost, approved_by, timestamp, idempotency_key, status (pending_approval, approved, executed, failed) and mode (test or live)
+- run_id, tenant_id, agent_name, action, destination_url, destination_params, cost, approved_by, timestamp, idempotency_key, status (pending_approval, approved, executed, failed) and mode (test or live), payload_hash, approved_at
+Approval applies to a specific payload only. 
 /deploy will deploy to Cloudflare 
 / charge works against Stripe test mode
 / publish - for video renders or social media and email
 
-Orchestrator, Marketer, Web Builder, Ops agents are in the gated group.
+Orchestrator, Marketer, Web Builder, Ops agents are in the Tier 2 group.
 They are independently scalable. 
 These will never take independent actions belong to the Action gate (charge money, live publish, social media) 
 
