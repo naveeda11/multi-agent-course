@@ -28,16 +28,16 @@ If the prompt is considered incomplete, getting more information is done by inte
 
 Orchestrator produces the completed brief, brand identity document, and task plan. Every inference is routed by the Runtime through the Action Gate and logged against the run shell.
 Ops will do the semantic finalization and persistence of these outputs.
-The orchestrator delegates to Ops for finalization. Ops invokes the Action Gate to persist a new brand-document version, set the run's brand_document_id, create the task records, and transition the same run to EXECUTING. Run-shell creation is deterministic control-plane work and is never routed through an Ops model call.
+The orchestrator delegates to Ops for finalization. Ops invokes the Action Gate to persist a new brand-document version with PENDING approval, set the run's brand_document_id, create the task records, and transition the same run to AWAITING_BRAND_APPROVAL. Run-shell creation is deterministic control-plane work and is never routed through an Ops model call.
 
 
-One that is done - then a dashboard view is created so that the user can see the status (brand document - pending, Web Builder: Pending, Maketing: Pending)
+Once that is done, the dashboard shows the completed brief and exact versioned brand document for administrator review. The Web Builder and Marketer remain blocked at the Action Gate while the brand document is PENDING. Administrator approval is bound to the brand-document id and content hash; the Runtime then automatically starts both downstream generators with stable replay-safe identities.
 
 Polling will happen in the background against this task table and then the dashboard is updated. 
 
-The web builder , using the brand doc, will be kicked off to start the task for HTML/CSS generation based on design criteria, That HTML/CSS is persisted, and then pushed to Cloudflare and a URL is returned and stored. The task table is updated. 
+The Web Builder, using the approved brand document, generates and reviews the HTML/CSS. The dashboard presents that HTML in a sandboxed preview. Only a separate payload-hash-bound administrator approval may push the exact reviewed site to Cloudflare; the verified URL is then returned and stored and the task table is updated.
 
-The marketer using the brand doc, will generate the marketing copy for the website along with marketing posts. Marketing posts will be stored in marketing_artifacts (segregated with tenant Id) and generate a story board. That is a human review, and if the story board is approved, then a video is generated (via Veo) . Marketing actions will need human review so the dashboard will reflect the need for human review. If editing is needed, the human can prompt for the change (max 5 Veo generations per tenant for both types of Veo renders) otherwise the task dashboard is updated and the marketing collateral is stored. Story board generation is cheaper then Veo, so splitting it to require one approval for story board and the other for Veo generation.
+The Marketer, using the approved brand document, generates the landing copy, posts, launch email, and storyboard. These are stored in tenant-scoped marketing_artifacts and displayed together for human review. Approval is bound to the complete marketing-pack hash. Only after pack approval does the dashboard expose the separate exact-payload and cost approval for Veo rendering. If editing is needed, the human can prompt for a later revision (max 5 Veo generations per tenant for both Veo outputs); otherwise the task dashboard is updated and the marketing collateral is stored.
 The Vertical Cut video will be a 2nd Veo invocation. 
 Veo Video Generation via kdowswell/veo-tools
 
@@ -184,7 +184,7 @@ Agents can call - based on their capabilities
 
 Action Gate will check for capability authorization and applicable approval separately. And idempotency via audit record. 
 To be clear: Capability - the agent is allowed to request
-Admin Approval: Admin human has approved a deployment, social media publish, or video generation
+Admin Approval: Admin human has approved an exact brand-document version, marketing-pack version, deployment payload, social-media publish, or video-generation payload as applicable
 Customer Approval: via public interface Stripe
 LLM calls are part of model capability and constrained by per-run budget already approved by human.
 This means that agents cannot reach those providers, even if misprompted. 
@@ -392,7 +392,6 @@ Failure Catalog
 5. Tenant Customer gets false information put on their marketing copy.  Fabricated social proof - incorporate into the marketing prompt to be honest and not include reviews/testimonials 
 6. Business Customer receives inaccurate reservation confirmation information. Business logic - double booking avoidable. Business logic checks for quantity available before booking using SELECT for UPDATE Also needs to check date overlaps. .
 7. Inaccurate descriptions on website vs DB Schema. After website is generated, conduct a programmatic check of the website vs business catalog descriptions and prices
-
 
 
 

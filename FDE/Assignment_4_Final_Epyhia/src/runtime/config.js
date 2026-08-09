@@ -5,6 +5,7 @@ import { Strategist } from "./strategist.js";
 import { Marketer } from "./marketer.js";
 import { WebBuilder } from "./web-builder.js";
 import { ApprovalCoordinator } from "./approval-coordinator.js";
+import { BrandWorkflow } from "./brand-workflow.js";
 
 function required(name) {
   const value = process.env[name];
@@ -70,6 +71,11 @@ export function loadRuntimeDependencies() {
     marketer,
     webBuilder,
     approvalCoordinator,
+    brandWorkflow: new BrandWorkflow({
+      adminGateClient,
+      marketer,
+      webBuilder,
+    }),
     runStatusReader: adminGateClient,
     runAuditReader: adminGateClient,
     tenantProfileReader: adminGateClient,

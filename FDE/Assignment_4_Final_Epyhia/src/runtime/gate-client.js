@@ -123,6 +123,29 @@ export class ActionGateClient {
     return parseResponse(response);
   }
 
+  async approveBrandDocument({
+    tenantId,
+    runId,
+    brandDocumentId,
+    contentHash,
+    approvedBy,
+    idempotencyKey,
+  }) {
+    const response = await this.fetch(
+      `${this.baseUrl}/v1/runs/${encodeURIComponent(runId)}/brand-document/approve`,
+      {
+        method: "POST",
+        headers: {
+          authorization: `Bearer ${this.capabilityHandle}`,
+          "content-type": "application/json",
+          "idempotency-key": idempotencyKey,
+        },
+        body: JSON.stringify({ tenantId, brandDocumentId, contentHash, approvedBy }),
+      },
+    );
+    return parseResponse(response);
+  }
+
   async executeDeploy(actionId) {
     const response = await this.fetch(
       `${this.baseUrl}/v1/actions/${encodeURIComponent(actionId)}/execute`,
@@ -313,6 +336,28 @@ export class ActionGateClient {
         review,
       }),
     });
+    return parseResponse(response);
+  }
+
+  async approveMarketingPack({
+    tenantId,
+    runId,
+    packHash,
+    approvedBy,
+    idempotencyKey,
+  }) {
+    const response = await this.fetch(
+      `${this.baseUrl}/v1/runs/${encodeURIComponent(runId)}/marketing-pack/approve`,
+      {
+        method: "POST",
+        headers: {
+          authorization: `Bearer ${this.capabilityHandle}`,
+          "content-type": "application/json",
+          "idempotency-key": idempotencyKey,
+        },
+        body: JSON.stringify({ tenantId, packHash, approvedBy }),
+      },
+    );
     return parseResponse(response);
   }
 

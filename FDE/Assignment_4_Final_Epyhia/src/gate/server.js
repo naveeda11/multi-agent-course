@@ -54,6 +54,23 @@ export function createGateServer({ gate }) {
         return send(response, result.replayed ? 200 : 201, result);
       }
 
+      const brandApprovalMatch = url.pathname.match(
+        /^\/v1\/runs\/([^/]+)\/brand-document\/approve$/,
+      );
+      if (request.method === "POST" && brandApprovalMatch) {
+        const body = await readJson(request);
+        const result = await gate.approveBrandDocument({
+          capabilityHandle: bearer(request),
+          tenantId: body.tenantId,
+          runId: decodeURIComponent(brandApprovalMatch[1]),
+          brandDocumentId: body.brandDocumentId,
+          contentHash: body.contentHash,
+          approvedBy: body.approvedBy,
+          idempotencyKey: request.headers["idempotency-key"],
+        });
+        return send(response, 200, result);
+      }
+
       if (request.method === "POST" && url.pathname === "/v1/model-call") {
         const body = await readJson(request);
         const result = await gate.modelCall({
@@ -156,6 +173,22 @@ export function createGateServer({ gate }) {
           idempotencyKey: request.headers["idempotency-key"],
         });
         return send(response, result.replayed ? 200 : 201, result);
+      }
+
+      const marketingApprovalMatch = url.pathname.match(
+        /^\/v1\/runs\/([^/]+)\/marketing-pack\/approve$/,
+      );
+      if (request.method === "POST" && marketingApprovalMatch) {
+        const body = await readJson(request);
+        const result = await gate.approveMarketingPack({
+          capabilityHandle: bearer(request),
+          tenantId: body.tenantId,
+          runId: decodeURIComponent(marketingApprovalMatch[1]),
+          packHash: body.packHash,
+          approvedBy: body.approvedBy,
+          idempotencyKey: request.headers["idempotency-key"],
+        });
+        return send(response, 200, result);
       }
 
       if (request.method === "POST" && url.pathname === "/v1/site-artifact") {

@@ -142,6 +142,41 @@ export class RuntimeClient {
     return parseResponse(response);
   }
 
+  async approveBrandAndGenerate({
+    tenantId,
+    runId,
+    brandDocumentId,
+    contentHash,
+    approvedBy,
+  }) {
+    const response = await this.fetch(
+      `${this.baseUrl}/v1/runs/${encodeURIComponent(runId)}/brand-document/approve-and-generate`,
+      {
+        method: "POST",
+        headers: this.headers({ "content-type": "application/json" }),
+        body: JSON.stringify({
+          tenantId,
+          brandDocumentId,
+          contentHash,
+          approvedBy,
+        }),
+      },
+    );
+    return parseResponse(response);
+  }
+
+  async approveMarketingPack({ tenantId, runId, packHash, approvedBy }) {
+    const response = await this.fetch(
+      `${this.baseUrl}/v1/runs/${encodeURIComponent(runId)}/marketing-pack/approve`,
+      {
+        method: "POST",
+        headers: this.headers({ "content-type": "application/json" }),
+        body: JSON.stringify({ tenantId, packHash, approvedBy }),
+      },
+    );
+    return parseResponse(response);
+  }
+
   async approveAndExecuteDeployment({ actionId, payloadHash, approvedBy, tenantId }) {
     const response = await this.fetch(
       `${this.baseUrl}/v1/actions/${encodeURIComponent(actionId)}/approve-and-execute`,

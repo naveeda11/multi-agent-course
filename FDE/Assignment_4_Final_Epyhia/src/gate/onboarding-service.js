@@ -89,4 +89,16 @@ export class OnboardingService {
     validateTaskPlan(input.taskPlan);
     return this.repository.finalizeRun(input);
   }
+
+  async approveBrandDocument(input) {
+    requiredString(input.tenantId, "tenantId", { max: 200 });
+    requiredString(input.runId, "runId", { max: 200 });
+    requiredString(input.brandDocumentId, "brandDocumentId", { max: 200 });
+    requiredString(input.approvedBy, "approvedBy", { max: 500 });
+    requiredString(input.idempotencyKey, "idempotencyKey", { max: 200 });
+    if (!/^[a-f0-9]{64}$/.test(input.contentHash ?? "")) {
+      throw new ValidationError("contentHash must be a SHA-256 hex digest");
+    }
+    return this.repository.approveBrandDocument(input);
+  }
 }

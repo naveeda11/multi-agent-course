@@ -120,6 +120,17 @@ export class ActionGate {
     return this.onboardingService.finalizeRun({ ...input, agentName });
   }
 
+  async approveBrandDocument({ capabilityHandle, ...input }) {
+    this.capabilities.authorize(capabilityHandle, {
+      subject: "admin",
+      action: ACTIONS.APPROVE_BRAND_DOCUMENT,
+    });
+    if (!this.onboardingService) {
+      throw new ConflictError("Onboarding persistence is not configured");
+    }
+    return this.onboardingService.approveBrandDocument(input);
+  }
+
   async modelCall({ capabilityHandle, agentName, ...input }) {
     this.capabilities.authorize(capabilityHandle, {
       subject: agentName,
@@ -183,7 +194,14 @@ export class ActionGate {
     if (!this.repository?.readRunContext) {
       throw new ConflictError("Run persistence is not configured");
     }
-    return this.repository.readRunContext(input);
+    const context = await this.repository.readRunContext(input);
+    if (
+      ["web-builder", "marketer"].includes(agentName) &&
+      context.brandDocument.approvalStatus !== "APPROVED"
+    ) {
+      throw new ApprovalRequiredError("Brand document approval is required");
+    }
+    return context;
   }
 
   async persistMarketingPack({ capabilityHandle, agentName, ...input }) {
@@ -195,6 +213,17 @@ export class ActionGate {
       throw new ConflictError("Marketing persistence is not configured");
     }
     return this.marketingService.persistPack({ ...input, agentName });
+  }
+
+  async approveMarketingPack({ capabilityHandle, ...input }) {
+    this.capabilities.authorize(capabilityHandle, {
+      subject: "admin",
+      action: ACTIONS.APPROVE_MARKETING_PACK,
+    });
+    if (!this.marketingService) {
+      throw new ConflictError("Marketing persistence is not configured");
+    }
+    return this.marketingService.approvePack(input);
   }
 
   async persistSiteArtifact({ capabilityHandle, agentName, ...input }) {

@@ -239,6 +239,24 @@ export class NeonRepository {
           actionId,
         });
       }
+      if (action.actionType === "video-render") {
+        const packApproval = await client.query(
+          `SELECT COUNT(*)::int AS total,
+            COUNT(*) FILTER (WHERE approval_status = 'APPROVED')::int AS approved
+           FROM marketing_artifacts
+           WHERE tenant_id = $1 AND run_id = $2
+             AND artifact_type NOT IN ('VIDEO_LANDSCAPE', 'VIDEO_VERTICAL')`,
+          [tenantId, action.runId],
+        );
+        if (
+          Number(packApproval.rows[0].total) === 0 ||
+          Number(packApproval.rows[0].approved) !== Number(packApproval.rows[0].total)
+        ) {
+          throw new ConflictError(
+            "Marketing pack approval is required before video rendering",
+          );
+        }
+      }
       if (action.status !== "EXECUTED" && action.approvalStatus !== "APPROVED") {
         await client.query(
           `UPDATE actions SET approval_status = 'APPROVED', approved_by = $2,
@@ -743,10 +761,12 @@ export class NeonRepository {
       );
       const versionNumber = Number(versionResult.rows[0].next_version);
       const brandDocumentId = newId("brand");
+      const brandDocumentHash = sha256(brandDocument);
       await client.query(
-        `INSERT INTO brand_documents (id, tenant_id, version_number, full_text)
-         VALUES ($1, $2, $3, $4)`,
-        [brandDocumentId, tenantId, versionNumber, brandDocument],
+        `INSERT INTO brand_documents (
+          id, tenant_id, version_number, full_text, content_hash, approval_status
+        ) VALUES ($1, $2, $3, $4, $5, 'PENDING')`,
+        [brandDocumentId, tenantId, versionNumber, brandDocument, brandDocumentHash],
       );
 
       const tasks = [];
@@ -761,7 +781,7 @@ export class NeonRepository {
       }
       await client.query(
         `UPDATE runs SET completed_brief = $1, brand_document_id = $2,
-          status = 'EXECUTING' WHERE id = $3`,
+          status = 'AWAITING_BRAND_APPROVAL' WHERE id = $3`,
         [completedBrief, brandDocumentId, runId],
       );
       const actionId = newId("action");
@@ -780,9 +800,11 @@ export class NeonRepository {
       return {
         tenantId,
         runId,
-        status: "EXECUTING",
+        status: "AWAITING_BRAND_APPROVAL",
         brandDocumentId,
         brandVersion: versionNumber,
+        brandDocumentHash,
+        brandApprovalStatus: "PENDING",
         tasks,
         actionId,
         replayed: false,
@@ -792,6 +814,110 @@ export class NeonRepository {
       if (error.code === "23505") {
         throw new ConflictError("Finalization conflicts with an existing record");
       }
+      throw error;
+    } finally {
+      client.release();
+    }
+  }
+
+  async approveBrandDocument({
+    tenantId,
+    runId,
+    brandDocumentId,
+    contentHash,
+    approvedBy,
+    idempotencyKey,
+  }) {
+    const approvalHash = payloadHash({ brandDocumentId, contentHash });
+    const client = await this.pool.connect();
+    try {
+      await client.query("BEGIN");
+      await client.query("SELECT pg_advisory_xact_lock(hashtextextended($1, 0))", [
+        `${tenantId}:brand-approval:${runId}`,
+      ]);
+      const brand = await client.query(
+        `SELECT brand_documents.full_text, brand_documents.content_hash,
+          brand_documents.approval_status, runs.status
+         FROM runs
+         JOIN brand_documents ON brand_documents.id = runs.brand_document_id
+         WHERE runs.id = $1 AND runs.tenant_id = $2
+           AND brand_documents.id = $3
+         FOR UPDATE OF runs, brand_documents`,
+        [runId, tenantId, brandDocumentId],
+      );
+      if (brand.rowCount === 0) {
+        throw new NotFoundError("The brand document does not belong to this run");
+      }
+      const persistedHash = brand.rows[0].content_hash ?? sha256(brand.rows[0].full_text);
+      if (persistedHash !== contentHash) {
+        throw new ConflictError("Brand approval does not match the displayed document");
+      }
+      const existing = await client.query(
+        `SELECT id, payload_hash FROM actions
+         WHERE tenant_id = $1 AND action_type = 'approve-brand-document'
+           AND idempotency_key = $2`,
+        [tenantId, idempotencyKey],
+      );
+      if (existing.rowCount > 0 && existing.rows[0].payload_hash !== approvalHash) {
+        throw new ConflictError("Brand approval identity is bound to another document");
+      }
+      await client.query(
+        `UPDATE brand_documents SET content_hash = $2, approval_status = 'APPROVED',
+          approved_by = COALESCE(approved_by, $3),
+          approved_at = COALESCE(approved_at, now())
+         WHERE id = $1`,
+        [brandDocumentId, contentHash, approvedBy],
+      );
+      await client.query(
+        `UPDATE runs SET status = CASE
+          WHEN status = 'AWAITING_BRAND_APPROVAL' THEN 'EXECUTING'
+          ELSE status END
+         WHERE id = $1 AND tenant_id = $2`,
+        [runId, tenantId],
+      );
+      let actionId = existing.rows[0]?.id;
+      if (!actionId) {
+        actionId = newId("action");
+        await client.query(
+          `INSERT INTO actions (
+            id, tenant_id, run_id, agent_name, action_type, payload_hash,
+            idempotency_key, mode, approval_status, approved_by, approved_at,
+            provider_cost_microdollars, status, payload_json, executed_at
+          ) VALUES (
+            $1, $2, $3, 'admin', 'approve-brand-document', $4,
+            $5, 'TEST', 'APPROVED', $6, now(), 0, 'EXECUTED', $7::jsonb, now()
+          )`,
+          [
+            actionId,
+            tenantId,
+            runId,
+            approvalHash,
+            idempotencyKey,
+            approvedBy,
+            JSON.stringify({ brandDocumentId, contentHash }),
+          ],
+        );
+      }
+      const approved = await client.query(
+        `SELECT approval_status, approved_by, approved_at
+         FROM brand_documents WHERE id = $1`,
+        [brandDocumentId],
+      );
+      await client.query("COMMIT");
+      return {
+        tenantId,
+        runId,
+        brandDocumentId,
+        contentHash,
+        approvalStatus: approved.rows[0].approval_status,
+        approvedBy: approved.rows[0].approved_by,
+        approvedAt:
+          approved.rows[0].approved_at?.toISOString?.() ?? approved.rows[0].approved_at,
+        actionId,
+        replayed: existing.rowCount > 0,
+      };
+    } catch (error) {
+      await client.query("ROLLBACK");
       throw error;
     } finally {
       client.release();
@@ -949,6 +1075,8 @@ export class NeonRepository {
     const result = await this.pool.query(
       `SELECT runs.completed_brief, runs.status, runs.brand_document_id,
         brand_documents.version_number, brand_documents.full_text,
+        brand_documents.content_hash, brand_documents.approval_status,
+        brand_documents.approved_by, brand_documents.approved_at,
         tenants.business_name, tenants.business_slug, tenants.business_email,
         tenants.business_phone, tenants.business_address
        FROM runs
@@ -984,6 +1112,10 @@ export class NeonRepository {
         id: row.brand_document_id,
         version: Number(row.version_number),
         fullText: row.full_text,
+        contentHash: row.content_hash ?? sha256(row.full_text),
+        approvalStatus: row.approval_status,
+        approvedBy: row.approved_by,
+        approvedAt: row.approved_at?.toISOString?.() ?? row.approved_at,
       },
       business: {
         name: row.business_name,
@@ -1013,13 +1145,15 @@ export class NeonRepository {
   async readTenantProfile({ tenantId }) {
     const result = await this.pool.query(
       `SELECT id, business_name, business_slug, business_email,
-        business_phone, business_address
+        business_phone, business_address,
+        (SELECT runs.id FROM runs WHERE runs.tenant_id = tenants.id
+         ORDER BY runs.created_at DESC LIMIT 1) AS latest_run_id
        FROM tenants WHERE id = $1`,
       [tenantId],
     );
     if (result.rowCount === 0) return null;
     const tenant = result.rows[0];
-    return {
+    const profile = {
       tenantId: tenant.id,
       businessName: tenant.business_name,
       businessSlug: tenant.business_slug,
@@ -1027,6 +1161,8 @@ export class NeonRepository {
       businessPhone: tenant.business_phone,
       businessAddress: tenant.business_address,
     };
+    if (tenant.latest_run_id) profile.latestRunId = tenant.latest_run_id;
+    return profile;
   }
 
   async readErasureManifest({ tenantId }) {
@@ -1271,6 +1407,7 @@ export class NeonRepository {
         await client.query("COMMIT");
         return {
           actionId: existing.rows[0].id,
+          packHash: actionHash,
           artifacts: artifacts.rows,
           videoAction: parseAction(videoAction.rows[0]),
           replayed: true,
@@ -1294,21 +1431,21 @@ export class NeonRepository {
           sequence: 1,
           channel: "website",
           text: pack.landingCopy,
-          approval: "NOT_REQUIRED",
+          approval: "PENDING",
         },
         ...pack.socialPosts.map((post, index) => ({
           type: "SOCIAL_POST",
           sequence: index + 1,
           channel: post.channel,
           text: post.text,
-          approval: "NOT_REQUIRED",
+          approval: "PENDING",
         })),
         {
           type: "LAUNCH_EMAIL",
           sequence: 1,
           channel: "email-draft",
           text: pack.launchEmail,
-          approval: "NOT_REQUIRED",
+          approval: "PENDING",
         },
         {
           type: "VIDEO_STORYBOARD",
@@ -1347,7 +1484,7 @@ export class NeonRepository {
         artifacts.push(persisted.rows[0]);
       }
       await client.query(
-        `UPDATE tasks SET status = 'AWAITING_STORYBOARD_APPROVAL',
+        `UPDATE tasks SET status = 'AWAITING_MARKETING_APPROVAL',
           output_ref = $3, updated_at = now()
          WHERE run_id = $1 AND tenant_id = $2 AND task_type = 'MARKETING_PACK'`,
         [runId, tenantId, `marketing-pack:${artifacts.length}`],
@@ -1416,12 +1553,119 @@ export class NeonRepository {
       );
       const videoAction = await this.requireAction(videoActionId, client);
       await client.query("COMMIT");
-      return { actionId, artifacts, videoAction, replayed: false };
+      return { actionId, packHash: actionHash, artifacts, videoAction, replayed: false };
     } catch (error) {
       await client.query("ROLLBACK");
       if (error.code === "23505") {
         throw new ConflictError("Marketing pack conflicts with an existing artifact");
       }
+      throw error;
+    } finally {
+      client.release();
+    }
+  }
+
+  async approveMarketingPack({
+    tenantId,
+    runId,
+    packHash,
+    approvedBy,
+    idempotencyKey,
+  }) {
+    const client = await this.pool.connect();
+    try {
+      await client.query("BEGIN");
+      await client.query("SELECT pg_advisory_xact_lock(hashtextextended($1, 0))", [
+        `${tenantId}:marketing-approval:${runId}`,
+      ]);
+      const persisted = await client.query(
+        `SELECT id, payload_hash FROM actions
+         WHERE tenant_id = $1 AND run_id = $2
+           AND action_type = 'persist-marketing-pack'
+         ORDER BY created_at DESC LIMIT 1
+         FOR UPDATE`,
+        [tenantId, runId],
+      );
+      if (persisted.rowCount === 0) {
+        throw new NotFoundError("The marketing pack has not been generated");
+      }
+      if (persisted.rows[0].payload_hash !== packHash) {
+        throw new ConflictError("Marketing approval does not match the displayed pack");
+      }
+      const artifacts = await client.query(
+        `SELECT id FROM marketing_artifacts
+         WHERE tenant_id = $1 AND run_id = $2
+           AND artifact_type NOT IN ('VIDEO_LANDSCAPE', 'VIDEO_VERTICAL')
+         FOR UPDATE`,
+        [tenantId, runId],
+      );
+      if (artifacts.rowCount === 0) {
+        throw new NotFoundError("The marketing pack has no reviewable artifacts");
+      }
+      const existing = await client.query(
+        `SELECT id, payload_hash FROM actions
+         WHERE tenant_id = $1 AND action_type = 'approve-marketing-pack'
+           AND idempotency_key = $2`,
+        [tenantId, idempotencyKey],
+      );
+      if (existing.rowCount > 0 && existing.rows[0].payload_hash !== packHash) {
+        throw new ConflictError("Marketing approval identity is bound to another pack");
+      }
+      await client.query(
+        `UPDATE marketing_artifacts
+         SET approval_status = 'APPROVED',
+           approved_by = COALESCE(approved_by, $3),
+           approved_at = COALESCE(approved_at, now()), updated_at = now()
+         WHERE tenant_id = $1 AND run_id = $2
+           AND artifact_type NOT IN ('VIDEO_LANDSCAPE', 'VIDEO_VERTICAL')`,
+        [tenantId, runId, approvedBy],
+      );
+      await client.query(
+        `UPDATE tasks SET status = 'AWAITING_VIDEO_APPROVAL', updated_at = now()
+         WHERE tenant_id = $1 AND run_id = $2 AND task_type = 'MARKETING_PACK'`,
+        [tenantId, runId],
+      );
+      let actionId = existing.rows[0]?.id;
+      if (!actionId) {
+        actionId = newId("action");
+        await client.query(
+          `INSERT INTO actions (
+            id, tenant_id, run_id, agent_name, action_type, payload_hash,
+            idempotency_key, mode, approval_status, approved_by, approved_at,
+            provider_cost_microdollars, status, payload_json, executed_at
+          ) VALUES (
+            $1, $2, $3, 'admin', 'approve-marketing-pack', $4,
+            $5, 'TEST', 'APPROVED', $6, now(), 0, 'EXECUTED', $7::jsonb, now()
+          )`,
+          [
+            actionId,
+            tenantId,
+            runId,
+            packHash,
+            idempotencyKey,
+            approvedBy,
+            JSON.stringify({ persistedActionId: persisted.rows[0].id, packHash }),
+          ],
+        );
+      }
+      const videoAction = await client.query(
+        `SELECT * FROM actions WHERE tenant_id = $1 AND run_id = $2
+         AND action_type = 'video-render' ORDER BY created_at DESC LIMIT 1`,
+        [tenantId, runId],
+      );
+      await client.query("COMMIT");
+      return {
+        tenantId,
+        runId,
+        packHash,
+        approvalStatus: "APPROVED",
+        approvedBy,
+        actionId,
+        videoAction: parseAction(videoAction.rows[0]),
+        replayed: existing.rowCount > 0,
+      };
+    } catch (error) {
+      await client.query("ROLLBACK");
       throw error;
     } finally {
       client.release();
@@ -2048,7 +2292,8 @@ export class NeonRepository {
     );
     const brandResult = runResult.rows[0].brand_document_id
       ? await client.query(
-          `SELECT version_number FROM brand_documents WHERE id = $1`,
+          `SELECT version_number, full_text, content_hash, approval_status
+           FROM brand_documents WHERE id = $1`,
           [runResult.rows[0].brand_document_id],
         )
       : { rows: [] };
@@ -2065,6 +2310,10 @@ export class NeonRepository {
       brandVersion: brandResult.rows[0]
         ? Number(brandResult.rows[0].version_number)
         : null,
+      brandDocumentHash: brandResult.rows[0]
+        ? brandResult.rows[0].content_hash ?? sha256(brandResult.rows[0].full_text)
+        : null,
+      brandApprovalStatus: brandResult.rows[0]?.approval_status ?? null,
       tasks: taskResult.rows.map((row) => ({
         id: row.id,
         taskType: row.task_type,

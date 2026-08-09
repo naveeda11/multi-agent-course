@@ -41,6 +41,7 @@ export function createRuntimeServer({
   runAuditReader,
   tenantProfileReader,
   tenantEraser,
+  brandWorkflow,
   tier1CapabilityHandle,
 }) {
   const expectedTier1Capability = validateTier1Capability(tier1CapabilityHandle);
@@ -83,6 +84,8 @@ export function createRuntimeServer({
         return send(response, 200, {
           runId: context.runId,
           status: context.runStatus,
+          completedBrief: context.completedBrief,
+          brandDocument: context.brandDocument,
           tasks: context.tasks,
         });
       }
@@ -137,6 +140,33 @@ export function createRuntimeServer({
           idempotencyKey: request.headers["idempotency-key"],
         });
         return send(response, result.persisted.replayed ? 200 : 201, result);
+      }
+      const brandGenerationMatch = url.pathname.match(
+        /^\/v1\/runs\/([^/]+)\/brand-document\/approve-and-generate$/,
+      );
+      if (request.method === "POST" && brandGenerationMatch) {
+        const body = await readJson(request);
+        const result = await brandWorkflow.approveAndGenerate({
+          tenantId: body.tenantId,
+          runId: decodeURIComponent(brandGenerationMatch[1]),
+          brandDocumentId: body.brandDocumentId,
+          contentHash: body.contentHash,
+          approvedBy: body.approvedBy,
+        });
+        return send(response, 200, result);
+      }
+      const marketingPackApprovalMatch = url.pathname.match(
+        /^\/v1\/runs\/([^/]+)\/marketing-pack\/approve$/,
+      );
+      if (request.method === "POST" && marketingPackApprovalMatch) {
+        const body = await readJson(request);
+        const result = await brandWorkflow.approveMarketingPack({
+          tenantId: body.tenantId,
+          runId: decodeURIComponent(marketingPackApprovalMatch[1]),
+          packHash: body.packHash,
+          approvedBy: body.approvedBy,
+        });
+        return send(response, 200, result);
       }
       const webBuildMatch = url.pathname.match(/^\/v1\/runs\/([^/]+)\/web-build$/);
       if (request.method === "POST" && webBuildMatch) {

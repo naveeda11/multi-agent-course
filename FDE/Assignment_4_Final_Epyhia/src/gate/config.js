@@ -80,6 +80,8 @@ export function loadGateDependencies() {
         ACTIONS.READ_TENANT_PROFILE,
         ACTIONS.READ_RUN_CONTEXT,
         ACTIONS.ERASE_TENANT,
+        ACTIONS.APPROVE_BRAND_DOCUMENT,
+        ACTIONS.APPROVE_MARKETING_PACK,
       ],
     },
     {

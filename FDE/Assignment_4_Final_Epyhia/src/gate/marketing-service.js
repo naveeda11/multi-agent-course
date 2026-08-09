@@ -106,4 +106,15 @@ export class MarketingService {
       agentName,
     });
   }
+
+  async approvePack(input) {
+    requireText(input.tenantId, "tenantId", 200);
+    requireText(input.runId, "runId", 200);
+    requireText(input.approvedBy, "approvedBy", 500);
+    requireText(input.idempotencyKey, "idempotencyKey", 200);
+    if (!/^[a-f0-9]{64}$/.test(input.packHash ?? "")) {
+      throw new ValidationError("packHash must be a SHA-256 hex digest");
+    }
+    return this.repository.approveMarketingPack(input);
+  }
 }

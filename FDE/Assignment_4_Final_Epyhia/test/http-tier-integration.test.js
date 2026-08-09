@@ -348,6 +348,19 @@ test("every Tier 1 Runtime client method sends the capability", async () => {
     { tenantId: "tenant", runId: "run" },
     "web-key",
   );
+  await runtimeClient.approveBrandAndGenerate({
+    tenantId: "tenant",
+    runId: "run",
+    brandDocumentId: "brand",
+    contentHash: "c".repeat(64),
+    approvedBy: "admin",
+  });
+  await runtimeClient.approveMarketingPack({
+    tenantId: "tenant",
+    runId: "run",
+    packHash: "d".repeat(64),
+    approvedBy: "admin",
+  });
   await runtimeClient.approveAndExecuteDeployment({
     actionId: "action",
     payloadHash: "a".repeat(64),
@@ -361,7 +374,7 @@ test("every Tier 1 Runtime client method sends the capability", async () => {
     tenantId: "tenant",
   });
 
-  assert.equal(requests.length, 12);
+  assert.equal(requests.length, 14);
   for (const request of requests) {
     assert.equal(
       request.options.headers.authorization,

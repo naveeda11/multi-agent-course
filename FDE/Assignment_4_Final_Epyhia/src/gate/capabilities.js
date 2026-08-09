@@ -22,6 +22,8 @@ export const ACTIONS = Object.freeze({
   PERSIST_SITE_ARTIFACT: "persist-site-artifact",
   VIDEO_RENDER: "video-render",
   ERASE_TENANT: "erase-tenant",
+  APPROVE_BRAND_DOCUMENT: "approve-brand-document",
+  APPROVE_MARKETING_PACK: "approve-marketing-pack",
 });
 
 export class CapabilityRegistry {

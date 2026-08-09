@@ -84,7 +84,12 @@ test("admin page compiles its browser script and reuses one onboarding key for c
   assert.match(script, /setInterval\(refreshTaskStatus,2000\)/);
   assert.match(html, /id="task-dashboard"/);
   assert.match(script, /showMarketingPreview/);
-  assert.match(script, /Exact payload hash/);
+  assert.match(script, /Exact marketing-pack hash/);
+  assert.match(script, /Exact deployment payload hash/);
+  assert.match(html, /Approve brand and generate/);
+  assert.match(html, /Approve marketing pack/);
+  assert.doesNotMatch(html, /Generate website/);
+  assert.doesNotMatch(html, /Generate marketing pack/);
   assert.match(script, /failureMessage/);
   assert.match(html, /id="marketing-preview"/);
   assert.match(html, /Agency home/);
