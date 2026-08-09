@@ -268,6 +268,14 @@ export class ActionGateClient {
     return parseResponse(response);
   }
 
+  async readTenantProfile({ tenantId }) {
+    const response = await this.fetch(
+      `${this.baseUrl}/v1/tenants/${encodeURIComponent(tenantId)}/profile`,
+      { headers: { authorization: `Bearer ${this.capabilityHandle}` } },
+    );
+    return parseResponse(response);
+  }
+
   async persistMarketingPack({
     tenantId,
     runId,

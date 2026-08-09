@@ -76,6 +76,7 @@ export function loadGateDependencies() {
         ACTIONS.APPROVE,
         ACTIONS.READ_AUDIT,
         ACTIONS.READ_RUN_AUDIT,
+        ACTIONS.READ_TENANT_PROFILE,
         ACTIONS.READ_RUN_CONTEXT,
       ],
     },

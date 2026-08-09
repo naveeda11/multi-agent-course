@@ -207,6 +207,45 @@ test("tenant-bound audit and cost data crosses only the admin read path", async 
   assert.equal(received[0].capabilityHandle, "http-tier-admin-capability");
 });
 
+test("an existing tenant profile crosses the authenticated admin read path", async () => {
+  const received = [];
+  const gateServer = createGateServer({
+    gate: {
+      async readTenantProfile(input) {
+        received.push(input);
+        return {
+          tenantId: "tenant_profile_test",
+          businessName: "Existing Rentals",
+          businessSlug: "existing-rentals",
+        };
+      },
+    },
+  });
+  const tenantProfileReader = new ActionGateClient({
+    baseUrl: "http://action-gate.internal",
+    capabilityHandle: "http-tier-admin-capability",
+    agentName: "admin",
+    fetchImpl: inMemoryFetch(gateServer),
+  });
+  const runtimeServer = createRuntimeServer({
+    tenantProfileReader,
+    tier1CapabilityHandle: TIER1_RUNTIME_HANDLE,
+  });
+  const runtimeClient = new RuntimeClient({
+    baseUrl: "http://runtime.internal",
+    capabilityHandle: TIER1_RUNTIME_HANDLE,
+    fetchImpl: inMemoryFetch(runtimeServer),
+  });
+
+  const result = await runtimeClient.readTenantProfile({
+    tenantId: "tenant_profile_test",
+  });
+
+  assert.equal(result.profile.businessName, "Existing Rentals");
+  assert.equal(received[0].tenantId, "tenant_profile_test");
+  assert.equal(received[0].capabilityHandle, "http-tier-admin-capability");
+});
+
 test("Tier 2 rejects requests without the exact Tier 1 capability", async () => {
   let called = false;
   const runtimeServer = createRuntimeServer({
@@ -258,6 +297,7 @@ test("every Tier 1 Runtime client method sends the capability", async () => {
   await runtimeClient.readOrderStatus("reservation", "https://business.example.test");
   await runtimeClient.readRunStatus({ tenantId: "tenant", runId: "run" });
   await runtimeClient.readRunAudit({ tenantId: "tenant", runId: "run" });
+  await runtimeClient.readTenantProfile({ tenantId: "tenant" });
   await runtimeClient.createMarketingPack(
     { tenantId: "tenant", runId: "run" },
     "marketing-key",
@@ -279,7 +319,7 @@ test("every Tier 1 Runtime client method sends the capability", async () => {
     tenantId: "tenant",
   });
 
-  assert.equal(requests.length, 10);
+  assert.equal(requests.length, 11);
   for (const request of requests) {
     assert.equal(
       request.options.headers.authorization,

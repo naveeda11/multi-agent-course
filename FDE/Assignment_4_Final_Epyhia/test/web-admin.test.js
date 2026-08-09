@@ -1,6 +1,10 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { adminPage, landingPage } from "../src/web/server.js";
+import {
+  adminPage,
+  createAdminLoginHandler,
+  landingPage,
+} from "../src/web/server.js";
 
 test("public agency page depicts the signed-out login flow", () => {
   const html = landingPage();
@@ -16,6 +20,38 @@ test("public agency page gives an authenticated operator workspace and sign-out 
   const html = landingPage({ authenticated: true });
   assert.match(html, /href="\/admin">Open workspace/);
   assert.match(html, /href="\/logout">Sign out/);
+});
+
+test("Auth0 login returns directly to the operator dashboard", async () => {
+  let options;
+  await createAdminLoginHandler()({}, {
+    oidc: {
+      login(input) {
+        options = input;
+      },
+    },
+  });
+  assert.deepEqual(options, { returnTo: "/admin" });
+});
+
+test("admin page locks an existing tenant business while allowing a new brief", () => {
+  const html = adminPage(
+    { email: "admin@example.test" },
+    {
+      businessName: "Naveed's Party Rentals",
+      businessSlug: "naveedspartyrentals",
+      businessEmail: "rentals@example.test",
+      businessPhone: "555-0100",
+      businessAddress: "123 Sesame Street",
+    },
+  );
+  assert.match(html, /permanently bound to this Auth0 identity/);
+  assert.match(html, /value="Naveed&#39;s Party Rentals" readonly/);
+  assert.match(html, /value="naveedspartyrentals" readonly/);
+  assert.match(html, /value="rentals@example\.test" readonly/);
+  assert.match(html, /value="555-0100" readonly/);
+  assert.match(html, /value="123 Sesame Street" readonly/);
+  assert.doesNotMatch(html, /name="originalBrief"[^>]*readonly/);
 });
 
 test("admin page compiles its browser script and reuses one onboarding key for clarifications", () => {

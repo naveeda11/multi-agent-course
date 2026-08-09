@@ -123,6 +123,17 @@ export function createGateServer({ gate }) {
         return send(response, 200, result);
       }
 
+      const tenantProfileMatch = url.pathname.match(
+        /^\/v1\/tenants\/([^/]+)\/profile$/,
+      );
+      if (request.method === "GET" && tenantProfileMatch) {
+        const profile = await gate.readTenantProfile({
+          capabilityHandle: bearer(request),
+          tenantId: decodeURIComponent(tenantProfileMatch[1]),
+        });
+        return send(response, 200, { profile });
+      }
+
       if (request.method === "POST" && url.pathname === "/v1/marketing-pack") {
         const body = await readJson(request);
         const result = await gate.persistMarketingPack({

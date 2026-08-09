@@ -1010,6 +1010,25 @@ export class NeonRepository {
     };
   }
 
+  async readTenantProfile({ tenantId }) {
+    const result = await this.pool.query(
+      `SELECT id, business_name, business_slug, business_email,
+        business_phone, business_address
+       FROM tenants WHERE id = $1`,
+      [tenantId],
+    );
+    if (result.rowCount === 0) return null;
+    const tenant = result.rows[0];
+    return {
+      tenantId: tenant.id,
+      businessName: tenant.business_name,
+      businessSlug: tenant.business_slug,
+      businessEmail: tenant.business_email,
+      businessPhone: tenant.business_phone,
+      businessAddress: tenant.business_address,
+    };
+  }
+
   async readRunAudit({ tenantId, runId }) {
     const run = await this.pool.query(
       `SELECT id, status, approved_budget_microdollars

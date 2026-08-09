@@ -61,3 +61,48 @@ test("run audit exposes tenant-bound idempotency evidence", async () => {
   assert.match(evidenceQuery.sql, /orders WHERE tenant_id = \$1/);
   assert.match(evidenceQuery.sql, /site_artifacts WHERE run_id = \$2/);
 });
+
+test("tenant profile returns the business identity without exposing credentials", async () => {
+  const repository = new NeonRepository({
+    pool: {
+      async query(sql, params) {
+        assert.match(sql, /FROM tenants WHERE id = \$1/);
+        assert.deepEqual(params, ["tenant_demo"]);
+        return {
+          rowCount: 1,
+          rows: [{
+            id: "tenant_demo",
+            business_name: "Existing Rentals",
+            business_slug: "existing-rentals",
+            business_email: "hello@example.test",
+            business_phone: "555-0100",
+            business_address: "1 Main Street",
+          }],
+        };
+      },
+    },
+  });
+
+  assert.deepEqual(await repository.readTenantProfile({ tenantId: "tenant_demo" }), {
+    tenantId: "tenant_demo",
+    businessName: "Existing Rentals",
+    businessSlug: "existing-rentals",
+    businessEmail: "hello@example.test",
+    businessPhone: "555-0100",
+    businessAddress: "1 Main Street",
+  });
+});
+
+test("tenant profile returns null for a first-time Auth0 identity", async () => {
+  const repository = new NeonRepository({
+    pool: {
+      async query() {
+        return { rowCount: 0, rows: [] };
+      },
+    },
+  });
+  assert.equal(
+    await repository.readTenantProfile({ tenantId: "tenant_new" }),
+    null,
+  );
+});

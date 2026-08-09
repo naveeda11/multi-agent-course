@@ -61,7 +61,12 @@ function buildHarness(provider = new FakeDeploymentProvider()) {
     {
       handle: ADMIN_HANDLE,
       subject: "admin",
-      actions: [ACTIONS.APPROVE, ACTIONS.READ_AUDIT, ACTIONS.READ_RUN_AUDIT],
+      actions: [
+        ACTIONS.APPROVE,
+        ACTIONS.READ_AUDIT,
+        ACTIONS.READ_RUN_AUDIT,
+        ACTIONS.READ_TENANT_PROFILE,
+      ],
     },
   ]);
   const gate = new ActionGate({
@@ -338,6 +343,25 @@ describe("Action Gate deploy vertical slice", () => {
     });
     assert.equal(audit.runId, "run_demo");
     assert.deepEqual(received[0], { tenantId: "tenant_demo", runId: "run_demo" });
+  });
+
+  test("requires the admin capability to read the bound tenant profile", async () => {
+    harness.repository.readTenantProfile = async ({ tenantId }) => ({
+      tenantId,
+      businessName: "Demo Tenant",
+    });
+    await assert.rejects(
+      harness.gate.readTenantProfile({
+        capabilityHandle: WEB_HANDLE,
+        tenantId: "tenant_demo",
+      }),
+      (error) => error.code === "FORBIDDEN",
+    );
+    const profile = await harness.gate.readTenantProfile({
+      capabilityHandle: ADMIN_HANDLE,
+      tenantId: "tenant_demo",
+    });
+    assert.equal(profile.businessName, "Demo Tenant");
   });
 
   test("keeps one stable deployment project per tenant", async () => {

@@ -9,6 +9,7 @@ export const ACTIONS = Object.freeze({
   APPROVE: "approve",
   READ_AUDIT: "read-audit",
   READ_RUN_AUDIT: "read-run-audit",
+  READ_TENANT_PROFILE: "read-tenant-profile",
   CREATE_RUN_SHELL: "create-run-shell",
   FINALIZE_RUN: "finalize-run",
   MODEL_CALL: "model-call",

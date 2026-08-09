@@ -72,5 +72,6 @@ export function loadRuntimeDependencies() {
     approvalCoordinator,
     runStatusReader: adminGateClient,
     runAuditReader: adminGateClient,
+    tenantProfileReader: adminGateClient,
   };
 }

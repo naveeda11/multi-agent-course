@@ -39,6 +39,7 @@ export function createRuntimeServer({
   approvalCoordinator,
   runStatusReader,
   runAuditReader,
+  tenantProfileReader,
   tier1CapabilityHandle,
 }) {
   const expectedTier1Capability = validateTier1Capability(tier1CapabilityHandle);
@@ -92,6 +93,18 @@ export function createRuntimeServer({
           await runAuditReader.readRunAudit({
             tenantId: url.searchParams.get("tenantId"),
             runId: decodeURIComponent(runAuditMatch[1]),
+          }),
+        );
+      }
+      const tenantProfileMatch = url.pathname.match(
+        /^\/v1\/tenants\/([^/]+)\/profile$/,
+      );
+      if (request.method === "GET" && tenantProfileMatch) {
+        return send(
+          response,
+          200,
+          await tenantProfileReader.readTenantProfile({
+            tenantId: decodeURIComponent(tenantProfileMatch[1]),
           }),
         );
       }

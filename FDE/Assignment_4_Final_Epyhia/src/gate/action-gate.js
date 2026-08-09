@@ -299,6 +299,18 @@ export class ActionGate {
     return this.repository.readRunAudit({ tenantId, runId });
   }
 
+  async readTenantProfile({ capabilityHandle, tenantId }) {
+    this.capabilities.authorize(capabilityHandle, {
+      subject: "admin",
+      action: ACTIONS.READ_TENANT_PROFILE,
+    });
+    validateRequestId(tenantId, "tenantId");
+    if (!this.repository?.readTenantProfile) {
+      throw new ConflictError("Tenant persistence is not configured");
+    }
+    return this.repository.readTenantProfile({ tenantId });
+  }
+
   async executeDeploy({ capabilityHandle, actionId, agentName }) {
     this.capabilities.authorize(capabilityHandle, {
       subject: agentName,

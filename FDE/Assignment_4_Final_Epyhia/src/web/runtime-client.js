@@ -92,6 +92,14 @@ export class RuntimeClient {
     return parseResponse(response);
   }
 
+  async readTenantProfile({ tenantId }) {
+    const response = await this.fetch(
+      `${this.baseUrl}/v1/tenants/${encodeURIComponent(tenantId)}/profile`,
+      { headers: this.headers() },
+    );
+    return parseResponse(response);
+  }
+
   async createMarketingPack({ tenantId, runId }, idempotencyKey) {
     const response = await this.fetch(
       `${this.baseUrl}/v1/runs/${encodeURIComponent(runId)}/marketing`,
