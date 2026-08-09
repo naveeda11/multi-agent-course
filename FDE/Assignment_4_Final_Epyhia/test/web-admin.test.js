@@ -46,12 +46,19 @@ test("admin page locks an existing tenant business while allowing a new brief", 
     },
   );
   assert.match(html, /permanently bound to this Auth0 identity/);
+  assert.match(html, /Clear form for demo/);
   assert.match(html, /value="Naveed&#39;s Party Rentals" readonly/);
   assert.match(html, /value="naveedspartyrentals" readonly/);
   assert.match(html, /value="rentals@example\.test" readonly/);
   assert.match(html, /value="555-0100" readonly/);
   assert.match(html, /value="123 Sesame Street" readonly/);
   assert.doesNotMatch(html, /name="originalBrief"[^>]*readonly/);
+  const script = html.match(/<script>([\s\S]+)<\/script>/)?.[1];
+  assert.match(script, /sessionStorage\.setItem\('epyhia-clean-demo','1'\)/);
+  assert.match(script, /matchesBoundBusiness/);
+  assert.match(script, /No model call was made/);
+  assert.match(script, /Site records added by replay/);
+  assert.match(script, /Order rows added by replay/);
 });
 
 test("admin page compiles its browser script and reuses one onboarding key for clarifications", () => {
