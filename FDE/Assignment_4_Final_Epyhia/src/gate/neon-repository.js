@@ -1029,6 +1029,90 @@ export class NeonRepository {
     };
   }
 
+  async readErasureManifest({ tenantId }) {
+    const tenant = await this.pool.query(
+      "SELECT id FROM tenants WHERE id = $1",
+      [tenantId],
+    );
+    if (tenant.rowCount === 0) return null;
+    const [deployment, sessions] = await Promise.all([
+      this.pool.query(
+        `SELECT project.project_name, deployment.live_url
+         FROM deployment_projects AS project
+         LEFT JOIN deployments AS deployment ON deployment.tenant_id = project.tenant_id
+         WHERE project.tenant_id = $1`,
+        [tenantId],
+      ),
+      this.pool.query(
+        `SELECT stripe_checkout_session_id
+         FROM reservations
+         WHERE tenant_id = $1 AND stripe_checkout_session_id IS NOT NULL`,
+        [tenantId],
+      ),
+    ]);
+    return {
+      tenantId,
+      projectName: deployment.rows[0]?.project_name ?? null,
+      liveUrl: deployment.rows[0]?.live_url ?? null,
+      r2Prefix: `epyhia-demo/${tenantId}/`,
+      stripeCheckoutSessionIds: sessions.rows.map(
+        (row) => row.stripe_checkout_session_id,
+      ),
+    };
+  }
+
+  async deleteTenantData({ tenantId }) {
+    const client = await this.pool.connect();
+    try {
+      await client.query("BEGIN");
+      await client.query("SELECT pg_advisory_xact_lock(hashtextextended($1, 0))", [
+        `erase:${tenantId}`,
+      ]);
+      const tenant = await client.query(
+        "SELECT id FROM tenants WHERE id = $1 FOR UPDATE",
+        [tenantId],
+      );
+      if (tenant.rowCount === 0) {
+        await client.query("COMMIT");
+        return { tenantId, deleted: false, alreadyDeleted: true };
+      }
+      const statements = [
+        "DELETE FROM deployments WHERE tenant_id = $1",
+        "DELETE FROM marketing_artifacts WHERE tenant_id = $1",
+        "DELETE FROM site_artifacts WHERE tenant_id = $1",
+        "DELETE FROM orders WHERE tenant_id = $1",
+        `DELETE FROM reservation_items WHERE reservation_id IN
+          (SELECT id FROM reservations WHERE tenant_id = $1)`,
+        "DELETE FROM reservations WHERE tenant_id = $1",
+        "DELETE FROM customers WHERE tenant_id = $1",
+        "DELETE FROM rental_items WHERE tenant_id = $1",
+        "DELETE FROM site_hosts WHERE tenant_id = $1",
+        "DELETE FROM webhook_events WHERE tenant_id = $1",
+        "DELETE FROM deployment_projects WHERE tenant_id = $1",
+        "DELETE FROM actions WHERE tenant_id = $1",
+        `DELETE FROM agent_calls WHERE run_id IN
+          (SELECT id FROM runs WHERE tenant_id = $1)`,
+        "DELETE FROM onboarding_requests WHERE tenant_id = $1",
+        "DELETE FROM tasks WHERE tenant_id = $1",
+        "DELETE FROM runs WHERE tenant_id = $1",
+        "DELETE FROM brand_documents WHERE tenant_id = $1",
+        "DELETE FROM tenants WHERE id = $1",
+      ];
+      let deletedRows = 0;
+      for (const sql of statements) {
+        const result = await client.query(sql, [tenantId]);
+        deletedRows += result.rowCount ?? 0;
+      }
+      await client.query("COMMIT");
+      return { tenantId, deleted: true, alreadyDeleted: false, deletedRows };
+    } catch (error) {
+      await client.query("ROLLBACK");
+      throw error;
+    } finally {
+      client.release();
+    }
+  }
+
   async readRunAudit({ tenantId, runId }) {
     const run = await this.pool.query(
       `SELECT id, status, approved_budget_microdollars
@@ -1779,11 +1863,11 @@ export class NeonRepository {
     try {
       await client.query("BEGIN");
       const insertedEvent = await client.query(
-        `INSERT INTO webhook_events (stripe_event_id, event_type, livemode)
-         VALUES ($1, $2, false)
+        `INSERT INTO webhook_events (stripe_event_id, event_type, livemode, tenant_id)
+         VALUES ($1, $2, false, $3)
          ON CONFLICT (stripe_event_id) DO NOTHING
          RETURNING stripe_event_id`,
-        [event.id, event.type],
+        [event.id, event.type, tenantId],
       );
       if (insertedEvent.rowCount === 0) {
         await client.query("COMMIT");

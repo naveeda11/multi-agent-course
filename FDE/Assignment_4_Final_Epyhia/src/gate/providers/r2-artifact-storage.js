@@ -1,5 +1,7 @@
 import {
+  DeleteObjectsCommand,
   HeadObjectCommand,
+  ListObjectsV2Command,
   PutObjectCommand,
   S3Client,
 } from "@aws-sdk/client-s3";
@@ -69,6 +71,48 @@ export class R2ArtifactStorage {
       return { objectKey, contentHash, bytes: body.length, replayed: false };
     } catch (error) {
       throw new ProviderError("R2 artifact upload failed", { cause: error.message });
+    }
+  }
+
+  async deletePrefix(prefix) {
+    if (!OBJECT_KEY_PATTERN.test(prefix ?? "") || !prefix.endsWith("/")) {
+      throw new ValidationError("R2 deletion prefix must be a safe relative directory");
+    }
+    let deletedObjects = 0;
+    try {
+      for (let batch = 0; batch < 1_000; batch += 1) {
+        const listed = await this.client.send(
+          new ListObjectsV2Command({ Bucket: this.bucket, Prefix: prefix, MaxKeys: 1_000 }),
+        );
+        const objects = (listed.Contents ?? [])
+          .map((object) => object.Key)
+          .filter(Boolean)
+          .map((Key) => ({ Key }));
+        if (objects.length === 0) break;
+        const deletion = await this.client.send(
+          new DeleteObjectsCommand({
+            Bucket: this.bucket,
+            Delete: { Objects: objects, Quiet: true },
+          }),
+        );
+        if ((deletion.Errors ?? []).length > 0) {
+          throw new ProviderError("R2 reported an object deletion failure");
+        }
+        deletedObjects += objects.length;
+        if (batch === 999) {
+          throw new ProviderError("R2 tenant artifact deletion exceeded its batch limit");
+        }
+      }
+      const remaining = await this.client.send(
+        new ListObjectsV2Command({ Bucket: this.bucket, Prefix: prefix, MaxKeys: 1 }),
+      );
+      if ((remaining.KeyCount ?? remaining.Contents?.length ?? 0) !== 0) {
+        throw new ProviderError("R2 tenant artifact deletion could not be verified");
+      }
+      return { prefix, deletedObjects };
+    } catch (error) {
+      if (error instanceof ProviderError || error instanceof ValidationError) throw error;
+      throw new ProviderError("R2 tenant artifact deletion failed", { cause: error.message });
     }
   }
 }

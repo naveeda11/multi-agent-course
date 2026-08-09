@@ -46,7 +46,8 @@ test("admin page locks an existing tenant business while allowing a new brief", 
     },
   );
   assert.match(html, /permanently bound to this Auth0 identity/);
-  assert.match(html, /Clear form for demo/);
+  assert.match(html, /Delete business and undeploy/);
+  assert.match(html, /Delete everything/);
   assert.match(html, /value="Naveed&#39;s Party Rentals" readonly/);
   assert.match(html, /value="naveedspartyrentals" readonly/);
   assert.match(html, /value="rentals@example\.test" readonly/);
@@ -54,9 +55,11 @@ test("admin page locks an existing tenant business while allowing a new brief", 
   assert.match(html, /value="123 Sesame Street" readonly/);
   assert.doesNotMatch(html, /name="originalBrief"[^>]*readonly/);
   const script = html.match(/<script>([\s\S]+)<\/script>/)?.[1];
-  assert.match(script, /sessionStorage\.setItem\('epyhia-clean-demo','1'\)/);
-  assert.match(script, /matchesBoundBusiness/);
-  assert.match(script, /No model call was made/);
+  assert.match(script, /method:'DELETE'/);
+  assert.match(script, /confirmation:'DELETE'/);
+  assert.match(script, /location\.href='\/logout'/);
+  assert.doesNotMatch(script, /sessionStorage/);
+  assert.doesNotMatch(script, /matchesBoundBusiness/);
   assert.match(script, /Site records added by replay/);
   assert.match(script, /Order rows added by replay/);
 });

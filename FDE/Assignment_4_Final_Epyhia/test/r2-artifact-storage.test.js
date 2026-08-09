@@ -70,3 +70,27 @@ test("rejects unsafe R2 object keys", async () => {
     ValidationError,
   );
 });
+
+test("deletes and verifies every object under the tenant prefix", async () => {
+  let listed = false;
+  const calls = [];
+  const storage = new R2ArtifactStorage({
+    bucket: "demo-bucket",
+    client: {
+      async send(command) {
+        calls.push(command.input);
+        if (Object.hasOwn(command.input, "Delete")) {
+          listed = true;
+          return {};
+        }
+        if (!listed) {
+          return { KeyCount: 2, Contents: [{ Key: "tenant/a" }, { Key: "tenant/b" }] };
+        }
+        return { KeyCount: 0, Contents: [] };
+      },
+    },
+  });
+  const result = await storage.deletePrefix("tenant/");
+  assert.equal(result.deletedObjects, 2);
+  assert.equal(calls.filter((call) => Object.hasOwn(call, "Delete")).length, 1);
+});

@@ -133,6 +133,16 @@ export function createGateServer({ gate }) {
         });
         return send(response, 200, { profile });
       }
+      if (request.method === "DELETE" && tenantProfileMatch) {
+        const body = await readJson(request);
+        const result = await gate.eraseTenant({
+          capabilityHandle: bearer(request),
+          tenantId: decodeURIComponent(tenantProfileMatch[1]),
+          auth0UserId: body.auth0UserId,
+          confirmation: body.confirmation,
+        });
+        return send(response, 200, result);
+      }
 
       if (request.method === "POST" && url.pathname === "/v1/marketing-pack") {
         const body = await readJson(request);

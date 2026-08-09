@@ -74,4 +74,71 @@ export class StripeSandboxProvider {
       this.webhookSecret,
     );
   }
+
+  async eraseCheckoutSessions(sessionIds) {
+    const results = [];
+    for (const sessionId of [...new Set(sessionIds.filter(Boolean))]) {
+      let session;
+      try {
+        session = await this.client.checkout.sessions.retrieve(sessionId, {
+          expand: ["customer", "payment_intent.latest_charge"],
+        });
+      } catch (error) {
+        if (error?.code === "resource_missing" || error?.statusCode === 404) {
+          results.push({ sessionId, alreadyDeleted: true });
+          continue;
+        }
+        throw error;
+      }
+      if (session.livemode) {
+        throw new ValidationError("Tenant erasure cannot modify live Stripe objects");
+      }
+      if (session.status === "open") {
+        await this.client.checkout.sessions.expire(sessionId);
+      }
+      await this.client.checkout.sessions.update(sessionId, {
+        metadata: { reservation_id: "", tenant_id: "" },
+      });
+
+      let paymentIntent = session.payment_intent;
+      if (typeof paymentIntent === "string") {
+        paymentIntent = await this.client.paymentIntents.retrieve(paymentIntent, {
+          expand: ["latest_charge"],
+        });
+      }
+      if (paymentIntent) {
+        await this.client.paymentIntents.update(paymentIntent.id, {
+          metadata: { reservation_id: "", tenant_id: "" },
+        });
+        const charge = paymentIntent.latest_charge;
+        if (charge && typeof charge !== "string") {
+          await this.client.charges.update(charge.id, {
+            metadata: { reservation_id: "", tenant_id: "" },
+          });
+        }
+      }
+
+      const customer = session.customer;
+      if (customer) {
+        try {
+          await this.client.customers.del(
+            typeof customer === "string" ? customer : customer.id,
+          );
+        } catch (error) {
+          if (error?.code !== "resource_missing" && error?.statusCode !== 404) throw error;
+        }
+      }
+      results.push({
+        sessionId,
+        expired: session.status === "open",
+        identifyingMetadataRemoved: true,
+        customerDeleted: Boolean(customer),
+      });
+    }
+    return {
+      sessions: results,
+      providerRetentionNotice:
+        "Stripe does not expose hard deletion for completed Checkout Sessions, PaymentIntents, or Charges; EPYHIA removed its metadata and deleted any Customer objects.",
+    };
+  }
 }

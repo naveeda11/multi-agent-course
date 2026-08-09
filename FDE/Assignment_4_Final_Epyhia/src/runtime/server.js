@@ -40,6 +40,7 @@ export function createRuntimeServer({
   runStatusReader,
   runAuditReader,
   tenantProfileReader,
+  tenantEraser,
   tier1CapabilityHandle,
 }) {
   const expectedTier1Capability = validateTier1Capability(tier1CapabilityHandle);
@@ -105,6 +106,18 @@ export function createRuntimeServer({
           200,
           await tenantProfileReader.readTenantProfile({
             tenantId: decodeURIComponent(tenantProfileMatch[1]),
+          }),
+        );
+      }
+      if (request.method === "DELETE" && tenantProfileMatch) {
+        const body = await readJson(request);
+        return send(
+          response,
+          200,
+          await tenantEraser.eraseTenant({
+            tenantId: decodeURIComponent(tenantProfileMatch[1]),
+            auth0UserId: body.auth0UserId,
+            confirmation: body.confirmation,
           }),
         );
       }

@@ -76,3 +76,24 @@ test("Cloudflare verification hashes the content served at the live URL", async 
     false,
   );
 });
+
+test("Cloudflare deletion verifies both the project and live URL are gone", async () => {
+  const calls = [];
+  const provider = new CloudflareDeploymentProvider({
+    accountId: "account-test",
+    apiToken: "token-test",
+    verificationAttempts: 1,
+    verificationIntervalMs: 0,
+    fetchImpl: async (input, options = {}) => {
+      calls.push({ input: String(input), method: options.method ?? "GET" });
+      if (options.method === "DELETE") return new Response("{}", { status: 200 });
+      return new Response("not found", { status: 404 });
+    },
+  });
+  const result = await provider.deleteProject({
+    projectName: "verified-project",
+    liveUrl: "https://verified-project.pages.dev",
+  });
+  assert.equal(result.deleted, true);
+  assert.deepEqual(calls.map((call) => call.method), ["DELETE", "GET", "GET"]);
+});

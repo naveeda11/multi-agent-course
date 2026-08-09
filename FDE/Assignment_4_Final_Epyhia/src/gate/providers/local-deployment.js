@@ -42,4 +42,10 @@ export class LocalDeploymentProvider {
       return false;
     }
   }
+
+  async deleteProject({ projectName, liveUrl }) {
+    const { projectRoot } = safeTarget(this.root, projectName, "index.html");
+    await rm(projectRoot, { recursive: true, force: true });
+    return { projectName, liveUrl, deleted: true };
+  }
 }

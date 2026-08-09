@@ -106,3 +106,46 @@ test("tenant profile returns null for a first-time Auth0 identity", async () => 
     null,
   );
 });
+
+test("tenant erasure transaction deletes every tenant-owned Neon table", async () => {
+  const queries = [];
+  const client = {
+    async query(sql, params) {
+      queries.push({ sql: String(sql), params });
+      if (String(sql).includes("SELECT id FROM tenants")) {
+        return { rowCount: 1, rows: [{ id: "tenant_demo" }] };
+      }
+      return { rowCount: String(sql).startsWith("DELETE") ? 1 : 0, rows: [] };
+    },
+    release() {},
+  };
+  const repository = new NeonRepository({
+    pool: { async connect() { return client; } },
+  });
+  const result = await repository.deleteTenantData({ tenantId: "tenant_demo" });
+  assert.equal(result.deleted, true);
+  const sql = queries.map((query) => query.sql).join("\n");
+  for (const table of [
+    "deployments",
+    "marketing_artifacts",
+    "site_artifacts",
+    "orders",
+    "reservation_items",
+    "reservations",
+    "customers",
+    "rental_items",
+    "site_hosts",
+    "webhook_events",
+    "deployment_projects",
+    "actions",
+    "agent_calls",
+    "onboarding_requests",
+    "tasks",
+    "runs",
+    "brand_documents",
+    "tenants",
+  ]) {
+    assert.match(sql, new RegExp(`DELETE FROM ${table}`));
+  }
+  assert.match(sql, /COMMIT/);
+});

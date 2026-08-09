@@ -78,6 +78,7 @@ export class ActionGate {
     marketingService,
     siteService,
     videoService,
+    erasureService,
     maxDeployAttempts = 2,
   }) {
     this.repository = repository;
@@ -90,6 +91,7 @@ export class ActionGate {
     this.marketingService = marketingService;
     this.siteService = siteService;
     this.videoService = videoService;
+    this.erasureService = erasureService;
     this.maxDeployAttempts = maxDeployAttempts;
   }
 
@@ -309,6 +311,27 @@ export class ActionGate {
       throw new ConflictError("Tenant persistence is not configured");
     }
     return this.repository.readTenantProfile({ tenantId });
+  }
+
+  async eraseTenant({
+    capabilityHandle,
+    tenantId,
+    auth0UserId,
+    confirmation,
+  }) {
+    this.capabilities.authorize(capabilityHandle, {
+      subject: "admin",
+      action: ACTIONS.ERASE_TENANT,
+    });
+    validateRequestId(tenantId, "tenantId");
+    validateRequestId(auth0UserId, "auth0UserId");
+    if (confirmation !== "DELETE") {
+      throw new ValidationError("Tenant erasure requires explicit DELETE confirmation");
+    }
+    if (!this.erasureService) {
+      throw new ConflictError("Tenant erasure is not configured");
+    }
+    return this.erasureService.erase({ tenantId, auth0UserId });
   }
 
   async executeDeploy({ capabilityHandle, actionId, agentName }) {

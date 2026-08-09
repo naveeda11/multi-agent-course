@@ -179,4 +179,39 @@ export class CloudflareDeploymentProvider {
     }
     return false;
   }
+
+  async deleteProject({ projectName, liveUrl }) {
+    const endpoint = `https://api.cloudflare.com/client/v4/accounts/${this.accountId}/pages/projects/${encodeURIComponent(projectName)}`;
+    const headers = { Authorization: `Bearer ${this.apiToken}` };
+    const deleted = await this.fetch(endpoint, { method: "DELETE", headers });
+    if (!deleted.ok && deleted.status !== 404) {
+      throw new ProviderError("Unable to delete Cloudflare Pages project", {
+        status: deleted.status,
+      });
+    }
+
+    for (let attempt = 1; attempt <= this.verificationAttempts; attempt += 1) {
+      const project = await this.fetch(endpoint, { headers, cache: "no-store" });
+      let siteUnavailable = true;
+      if (liveUrl) {
+        try {
+          const site = await this.fetch(`${liveUrl}?epyhia_deleted=${attempt}`, {
+            redirect: "manual",
+            cache: "no-store",
+          });
+          siteUnavailable = site.status !== 200;
+        } catch {
+          siteUnavailable = true;
+        }
+      }
+      if (project.status === 404 && siteUnavailable) {
+        return { projectName, liveUrl, deleted: true };
+      }
+      if (attempt < this.verificationAttempts) await wait(this.verificationIntervalMs);
+    }
+    throw new ProviderError("Cloudflare project deletion did not pass real-world verification", {
+      projectName,
+      liveUrl,
+    });
+  }
 }

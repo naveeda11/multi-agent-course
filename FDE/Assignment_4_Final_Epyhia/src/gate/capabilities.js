@@ -21,6 +21,7 @@ export const ACTIONS = Object.freeze({
   PERSIST_MARKETING_PACK: "persist-marketing-pack",
   PERSIST_SITE_ARTIFACT: "persist-site-artifact",
   VIDEO_RENDER: "video-render",
+  ERASE_TENANT: "erase-tenant",
 });
 
 export class CapabilityRegistry {

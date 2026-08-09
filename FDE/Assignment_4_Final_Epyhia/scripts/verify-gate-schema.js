@@ -55,6 +55,7 @@ try {
       "005_catalog_keys",
       "006_site_artifacts",
       "007_action_execution_recovery",
+      "008_tenant_erasure",
     ]],
   );
   const columns = await repository.pool.query(
@@ -74,6 +75,11 @@ try {
     `SELECT column_name FROM information_schema.columns
      WHERE table_schema = 'public' AND table_name = 'actions'
        AND column_name = 'execution_started_at'`,
+  );
+  const erasureColumns = await repository.pool.query(
+    `SELECT column_name FROM information_schema.columns
+     WHERE table_schema = 'public' AND table_name = 'webhook_events'
+       AND column_name = 'tenant_id'`,
   );
   const parser = await repository.pool.connect();
   let criticalStatementsPrepared = false;
@@ -142,11 +148,12 @@ try {
   }
 
   const checks = {
-    "migrations 001-007": migrations.rowCount === 7,
+    "migrations 001-008": migrations.rowCount === 8,
     "required tables": tables.rowCount === expectedTables.length,
     "run-shell columns": columns.rowCount === expectedRunColumns.length,
     "checkout trace columns": checkoutColumns.rowCount === 2,
     "action recovery column": actionRecoveryColumns.rowCount === 1,
+    "tenant erasure trace column": erasureColumns.rowCount === 1,
     "critical SQL statements": criticalStatementsPrepared,
   };
   for (const [name, passed] of Object.entries(checks)) {

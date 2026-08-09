@@ -100,6 +100,18 @@ export class RuntimeClient {
     return parseResponse(response);
   }
 
+  async eraseTenant({ tenantId, auth0UserId, confirmation }) {
+    const response = await this.fetch(
+      `${this.baseUrl}/v1/tenants/${encodeURIComponent(tenantId)}/profile`,
+      {
+        method: "DELETE",
+        headers: this.headers({ "content-type": "application/json" }),
+        body: JSON.stringify({ auth0UserId, confirmation }),
+      },
+    );
+    return parseResponse(response);
+  }
+
   async createMarketingPack({ tenantId, runId }, idempotencyKey) {
     const response = await this.fetch(
       `${this.baseUrl}/v1/runs/${encodeURIComponent(runId)}/marketing`,

@@ -246,6 +246,43 @@ test("an existing tenant profile crosses the authenticated admin read path", asy
   assert.equal(received[0].capabilityHandle, "http-tier-admin-capability");
 });
 
+test("tenant erasure crosses Tier 2 and reaches only the admin Gate capability", async () => {
+  const received = [];
+  const gateServer = createGateServer({
+    gate: {
+      async eraseTenant(input) {
+        received.push(input);
+        return { deleted: true };
+      },
+    },
+  });
+  const tenantEraser = new ActionGateClient({
+    baseUrl: "http://action-gate.internal",
+    capabilityHandle: "http-tier-admin-capability",
+    agentName: "admin",
+    fetchImpl: inMemoryFetch(gateServer),
+  });
+  const runtimeServer = createRuntimeServer({
+    tenantEraser,
+    tier1CapabilityHandle: TIER1_RUNTIME_HANDLE,
+  });
+  const runtimeClient = new RuntimeClient({
+    baseUrl: "http://runtime.internal",
+    capabilityHandle: TIER1_RUNTIME_HANDLE,
+    fetchImpl: inMemoryFetch(runtimeServer),
+  });
+  const result = await runtimeClient.eraseTenant({
+    tenantId: "tenant_delete_test",
+    auth0UserId: "auth0|delete-test",
+    confirmation: "DELETE",
+  });
+  assert.equal(result.deleted, true);
+  assert.equal(received[0].tenantId, "tenant_delete_test");
+  assert.equal(received[0].auth0UserId, "auth0|delete-test");
+  assert.equal(received[0].confirmation, "DELETE");
+  assert.equal(received[0].capabilityHandle, "http-tier-admin-capability");
+});
+
 test("Tier 2 rejects requests without the exact Tier 1 capability", async () => {
   let called = false;
   const runtimeServer = createRuntimeServer({
@@ -298,6 +335,11 @@ test("every Tier 1 Runtime client method sends the capability", async () => {
   await runtimeClient.readRunStatus({ tenantId: "tenant", runId: "run" });
   await runtimeClient.readRunAudit({ tenantId: "tenant", runId: "run" });
   await runtimeClient.readTenantProfile({ tenantId: "tenant" });
+  await runtimeClient.eraseTenant({
+    tenantId: "tenant",
+    auth0UserId: "auth0|tenant",
+    confirmation: "DELETE",
+  });
   await runtimeClient.createMarketingPack(
     { tenantId: "tenant", runId: "run" },
     "marketing-key",
@@ -319,7 +361,7 @@ test("every Tier 1 Runtime client method sends the capability", async () => {
     tenantId: "tenant",
   });
 
-  assert.equal(requests.length, 11);
+  assert.equal(requests.length, 12);
   for (const request of requests) {
     assert.equal(
       request.options.headers.authorization,

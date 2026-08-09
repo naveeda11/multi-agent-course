@@ -276,6 +276,21 @@ export class ActionGateClient {
     return parseResponse(response);
   }
 
+  async eraseTenant({ tenantId, auth0UserId, confirmation }) {
+    const response = await this.fetch(
+      `${this.baseUrl}/v1/tenants/${encodeURIComponent(tenantId)}/profile`,
+      {
+        method: "DELETE",
+        headers: {
+          authorization: `Bearer ${this.capabilityHandle}`,
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({ auth0UserId, confirmation }),
+      },
+    );
+    return parseResponse(response);
+  }
+
   async persistMarketingPack({
     tenantId,
     runId,

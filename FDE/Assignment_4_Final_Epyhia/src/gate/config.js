@@ -16,6 +16,8 @@ import { SiteService } from "./site-service.js";
 import { VideoService } from "./video-service.js";
 import { VertexVeoProvider } from "./providers/vertex-veo.js";
 import { R2ArtifactStorage } from "./providers/r2-artifact-storage.js";
+import { Auth0ManagementProvider } from "./providers/auth0-management.js";
+import { ErasureService } from "./erasure-service.js";
 
 function required(name) {
   const value = process.env[name];
@@ -45,6 +47,9 @@ export function loadGateDependencies() {
       "OPENAI_API_KEY",
       "STRIPE_SANDBOX_PUBLISHABLE_KEY",
       "STRIPE_SANDBOX_SECRET_KEY",
+      "AUTH0_MANAGEMENT_ISSUER_BASE_URL",
+      "AUTH0_MANAGEMENT_CLIENT_ID",
+      "AUTH0_MANAGEMENT_CLIENT_SECRET",
     ]) {
       required(name);
     }
@@ -78,6 +83,7 @@ export function loadGateDependencies() {
         ACTIONS.READ_RUN_AUDIT,
         ACTIONS.READ_TENANT_PROFILE,
         ACTIONS.READ_RUN_CONTEXT,
+        ACTIONS.ERASE_TENANT,
       ],
     },
     {
@@ -132,13 +138,16 @@ export function loadGateDependencies() {
         provider: new OpenAIResponsesProvider({ apiKey: process.env.OPENAI_API_KEY }),
       })
     : null;
-  const checkoutService = neonRepository && process.env.STRIPE_SANDBOX_SECRET_KEY
+  const stripeProvider = neonRepository && process.env.STRIPE_SANDBOX_SECRET_KEY
+    ? new StripeSandboxProvider({
+        secretKey: process.env.STRIPE_SANDBOX_SECRET_KEY,
+        webhookSecret: process.env.STRIPE_WEBHOOK_SECRET,
+      })
+    : null;
+  const checkoutService = stripeProvider
     ? new CheckoutService({
         repository: neonRepository,
-        provider: new StripeSandboxProvider({
-          secretKey: process.env.STRIPE_SANDBOX_SECRET_KEY,
-          webhookSecret: process.env.STRIPE_WEBHOOK_SECRET,
-        }),
+        provider: stripeProvider,
       })
     : null;
   const catalogService = neonRepository
@@ -183,6 +192,22 @@ export function loadGateDependencies() {
         }),
       })
     : null;
+  const auth0Provider = neonRepository
+    ? new Auth0ManagementProvider({
+        issuerBaseUrl: required("AUTH0_MANAGEMENT_ISSUER_BASE_URL"),
+        clientId: required("AUTH0_MANAGEMENT_CLIENT_ID"),
+        clientSecret: required("AUTH0_MANAGEMENT_CLIENT_SECRET"),
+      })
+    : null;
+  const erasureService = neonRepository
+    ? new ErasureService({
+        repository: neonRepository,
+        deploymentProvider,
+        storage: r2Storage,
+        stripeProvider,
+        auth0Provider,
+      })
+    : null;
   return {
     repository,
     capabilities,
@@ -194,6 +219,7 @@ export function loadGateDependencies() {
     marketingService,
     siteService,
     videoService,
+    erasureService,
     neonRepository,
   };
 }

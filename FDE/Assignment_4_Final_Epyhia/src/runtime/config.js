@@ -73,5 +73,6 @@ export function loadRuntimeDependencies() {
     runStatusReader: adminGateClient,
     runAuditReader: adminGateClient,
     tenantProfileReader: adminGateClient,
+    tenantEraser: adminGateClient,
   };
 }

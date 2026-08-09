@@ -8,6 +8,9 @@ const source = {
   DATABASE_URL: "postgresql://test",
   STRIPE_SANDBOX_SECRET_KEY: "sk_test_example",
   CLOUDFLARE_API_TOKEN: "cloudflare-test",
+  AUTH0_MANAGEMENT_ISSUER_BASE_URL: "https://auth.example.test",
+  AUTH0_MANAGEMENT_CLIENT_ID: "management-client",
+  AUTH0_MANAGEMENT_CLIENT_SECRET: "management-secret",
   ACTION_GATE_URL: "http://gate.internal:4100",
   RUNTIME_URL: "http://runtime.internal:4200",
   TIER1_RUNTIME_CAPABILITY_HANDLE: "Tier1RuntimeCapabilityHandleForTests0001",
@@ -28,6 +31,7 @@ test("local tier startup exposes provider credentials only to the Gate", () => {
   assert.equal(gate.DATABASE_URL, "postgresql://test");
   assert.equal(gate.STRIPE_SANDBOX_SECRET_KEY, "sk_test_example");
   assert.equal(gate.CLOUDFLARE_API_TOKEN, "cloudflare-test");
+  assert.equal(gate.AUTH0_MANAGEMENT_CLIENT_SECRET, "management-secret");
   assert.equal(runtime.ACTION_GATE_URL, "http://gate.internal:4100");
   assert.equal(runtime.WEB_BUILDER_CAPABILITY_HANDLE, "capability-test");
   assert.equal(
@@ -46,6 +50,7 @@ test("local tier startup exposes provider credentials only to the Gate", () => {
     assert.equal(environment.DATABASE_URL, undefined);
     assert.equal(environment.STRIPE_SANDBOX_SECRET_KEY, undefined);
     assert.equal(environment.CLOUDFLARE_API_TOKEN, undefined);
+    assert.equal(environment.AUTH0_MANAGEMENT_CLIENT_SECRET, undefined);
   }
   for (const environment of [gate, runtime, web]) {
     assert.equal(environment.UNRELATED_OPERATOR_SECRET, undefined);
