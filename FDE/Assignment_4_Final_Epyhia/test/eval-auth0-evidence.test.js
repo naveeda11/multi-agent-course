@@ -60,6 +60,47 @@ test("live Auth0 evidence rejects a publicly readable admin page", async () => {
   );
 });
 
+test("live Auth0 evidence accepts an exact callback form post", async () => {
+  let requestCount = 0;
+  const result = await verifyAuth0Evidence({
+    agencyUrl: AGENCY,
+    issuerBaseUrl: ISSUER,
+    clientId: CLIENT_ID,
+    async fetchImpl() {
+      requestCount += 1;
+      if (requestCount === 1) return redirect("/login");
+      if (requestCount === 2) return redirect(authorizationUrl());
+      return new Response(
+        `<html><form method="post" action="${AGENCY}/callback"></form></html>`,
+        { status: 200, headers: { "content-type": "text/html; charset=utf-8" } },
+      );
+    },
+  });
+  assert.equal(result.verified, true);
+  assert.equal(result.issuerStatus, 200);
+});
+
+test("live Auth0 evidence rejects a form post to another route", async () => {
+  let requestCount = 0;
+  await assert.rejects(
+    verifyAuth0Evidence({
+      agencyUrl: AGENCY,
+      issuerBaseUrl: ISSUER,
+      clientId: CLIENT_ID,
+      async fetchImpl() {
+        requestCount += 1;
+        if (requestCount === 1) return redirect("/login");
+        if (requestCount === 2) return redirect(authorizationUrl());
+        return new Response(`<form action="${AGENCY}/wrong"></form>`, {
+          status: 200,
+          headers: { "content-type": "text/html" },
+        });
+      },
+    }),
+    /rejected or redirected away from the exact agency callback/,
+  );
+});
+
 test("live Auth0 evidence rejects the wrong callback", async () => {
   await assert.rejects(
     verifyAuth0Evidence({

@@ -15,6 +15,41 @@ function redirectLocation(response, label) {
   return location;
 }
 
+function decodeHtmlAttribute(value) {
+  return value
+    .replace(/&amp;/gi, "&")
+    .replace(/&quot;/gi, '"')
+    .replace(/&#39;|&apos;/gi, "'")
+    .replace(/&#(x[0-9a-f]+|\d+);/gi, (_entity, code) =>
+      String.fromCodePoint(
+        code[0].toLowerCase() === "x"
+          ? Number.parseInt(code.slice(1), 16)
+          : Number.parseInt(code, 10),
+      ),
+    );
+}
+
+async function callbackTarget(response, issuer) {
+  if ([301, 302, 303, 307, 308].includes(response.status)) {
+    return new URL(redirectLocation(response, "Auth0 callback allow-list probe"), issuer);
+  }
+  if (response.status !== 200) {
+    throw new Error(
+      `Auth0 callback allow-list probe returned HTTP ${response.status} instead of a redirect or form post`,
+    );
+  }
+  const contentType = response.headers.get("content-type") ?? "";
+  if (!contentType.toLowerCase().includes("text/html")) {
+    throw new Error("Auth0 callback allow-list probe returned a non-HTML form post");
+  }
+  const html = await response.text();
+  const action = html.match(/<form\b[^>]*\baction\s*=\s*(["'])(.*?)\1/is)?.[2];
+  if (!action) {
+    throw new Error("Auth0 callback allow-list probe omitted its form action");
+  }
+  return new URL(decodeHtmlAttribute(action), issuer);
+}
+
 export async function verifyAuth0Evidence({
   agencyUrl,
   issuerBaseUrl,
@@ -76,10 +111,7 @@ export async function verifyAuth0Evidence({
   const probeUrl = new URL(authorizationUrl);
   probeUrl.searchParams.set("prompt", "none");
   const issuerResponse = await fetchImpl(probeUrl, { redirect: "manual" });
-  const callbackUrl = new URL(
-    redirectLocation(issuerResponse, "Auth0 callback allow-list probe"),
-    issuer,
-  );
+  const callbackUrl = await callbackTarget(issuerResponse, issuer);
   const expectedCallbackUrl = new URL(expectedCallback);
   if (
     callbackUrl.origin !== expectedCallbackUrl.origin ||
