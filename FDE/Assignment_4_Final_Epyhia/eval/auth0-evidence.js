@@ -52,14 +52,26 @@ export async function verifyAuth0Evidence({
   const scopes = new Set(
     (authorizationUrl.searchParams.get("scope") ?? "").split(/\s+/).filter(Boolean),
   );
-  if (
-    authorizationUrl.searchParams.get("client_id") !== clientId ||
-    authorizationUrl.searchParams.get("redirect_uri") !== expectedCallback ||
-    authorizationUrl.searchParams.get("response_type") !== "code" ||
-    !scopes.has("openid") ||
-    !authorizationUrl.searchParams.get("state")
-  ) {
-    throw new Error("Auth0 authorization redirect has incorrect client, callback, or OIDC fields");
+  const responseType = authorizationUrl.searchParams.get("response_type") ?? "";
+  const invalidFields = [];
+  if (authorizationUrl.searchParams.get("client_id") !== clientId) {
+    invalidFields.push("client_id");
+  }
+  if (authorizationUrl.searchParams.get("redirect_uri") !== expectedCallback) {
+    invalidFields.push("redirect_uri");
+  }
+  if (!["code", "id_token", "code id_token"].includes(responseType)) {
+    invalidFields.push("response_type");
+  }
+  if (responseType.includes("id_token") && !authorizationUrl.searchParams.get("nonce")) {
+    invalidFields.push("nonce");
+  }
+  if (!scopes.has("openid")) invalidFields.push("scope");
+  if (!authorizationUrl.searchParams.get("state")) invalidFields.push("state");
+  if (invalidFields.length > 0) {
+    throw new Error(
+      `Auth0 authorization redirect has incorrect fields: ${invalidFields.join(", ")}`,
+    );
   }
   const probeUrl = new URL(authorizationUrl);
   probeUrl.searchParams.set("prompt", "none");

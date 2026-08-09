@@ -11,9 +11,10 @@ function authorizationUrl(overrides = {}) {
   const values = {
     client_id: CLIENT_ID,
     redirect_uri: `${AGENCY}/callback`,
-    response_type: "code",
+    response_type: "id_token",
     scope: "openid profile email",
     state: "signed-state",
+    nonce: "signed-nonce",
     ...overrides,
   };
   for (const [name, value] of Object.entries(values)) url.searchParams.set(name, value);
@@ -71,7 +72,7 @@ test("live Auth0 evidence rejects the wrong callback", async () => {
           : redirect(authorizationUrl({ redirect_uri: "https://wrong.example/callback" }));
       },
     }),
-    /incorrect client, callback, or OIDC fields/,
+    /incorrect fields: redirect_uri/,
   );
 });
 
@@ -88,6 +89,22 @@ test("live Auth0 evidence rejects a different authorization issuer", async () =>
       },
     }),
     /configured Auth0 authorization endpoint/,
+  );
+});
+
+test("live Auth0 evidence rejects an ID-token flow without a nonce", async () => {
+  await assert.rejects(
+    verifyAuth0Evidence({
+      agencyUrl: AGENCY,
+      issuerBaseUrl: ISSUER,
+      clientId: CLIENT_ID,
+      async fetchImpl(input) {
+        return String(input).endsWith("/admin")
+          ? redirect("/login")
+          : redirect(authorizationUrl({ nonce: "" }));
+      },
+    }),
+    /incorrect fields: nonce/,
   );
 });
 

@@ -626,13 +626,23 @@ def main():
         check=True,
     ).stdout.splitlines()
     design_text = (ROOT / "DESIGN.md").read_text(encoding="utf-8")
+    failure_catalog = re.search(
+        r"^Failure Catalog\s*$([\s\S]*?)(?=^#{1,6}\s|\Z)",
+        design_text,
+        re.I | re.M,
+    )
+    failure_cases = re.findall(
+        r"^\s*\d+\.\s+\S+",
+        failure_catalog.group(1) if failure_catalog else "",
+        re.M,
+    )
     design_precedes_implementation = False
     if design_commits and implementation_commits:
         design_precedes_implementation = subprocess.run(
             ["git", "merge-base", "--is-ancestor", design_commits[0], implementation_commits[0]],
             cwd=ROOT,
         ).returncode == 0
-    design_ok = design_precedes_implementation and len(re.findall(r"failure|hurt", design_text, re.I)) >= 5
+    design_ok = design_precedes_implementation and len(failure_cases) >= 5
     clean_clone_ok, clean_clone_evidence = verify_clean_clone()
 
     results = [
@@ -642,7 +652,7 @@ def main():
         check_result(checks["grounded_non_slop_site"], grounded_site, f"checked {len(expected_strings)} catalog/contact strings, viewport, placeholders, and images: {image_evidence}"),
         check_result(checks["crew_trace_and_brand"], crew_trace, f"tasks={len(tasks)}, model calls={len(calls)}, model cost={model_cost_microdollars} microdollars / approved={approved_model_budget} / cap=2000000, brand references consistent={brand_consistent}, fixed tiers={fixed_tiers}, Strategist delegates only={strategist_delegates_only}"),
         check_result(checks["action_gate_controls"], gate_controls, f"actions={len(actions)}, checkout actions={len(checkout_actions)}, webhook actions={len(webhook_actions)}, deploy actions={len(deployment_actions)}, video actions={len(video_actions)}, duplicate order groups={state.get('duplicate_orders')}"),
-        check_result(checks["design_first"], design_ok, f"DESIGN.md commits={len(design_commits)}; design precedes first implementation commit={design_precedes_implementation}; failure controls checked"),
+        check_result(checks["design_first"], design_ok, f"DESIGN.md commits={len(design_commits)}; design precedes first implementation commit={design_precedes_implementation}; numbered failure cases={len(failure_cases)}"),
         check_result(checks["deployed_agency_and_clean_clone"], agency_status == 200 and '"tier":1' in agency_body.replace(" ", "") and auth0_protected and clean_clone_ok, f"agency HTTP {agency_status}; Auth0: {auth0_evidence}; {clean_clone_evidence}"),
     ]
     score = sum(item["earned"] for item in results)
