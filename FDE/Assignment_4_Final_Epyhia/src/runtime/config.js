@@ -77,6 +77,7 @@ export function loadRuntimeDependencies() {
       webBuilder,
     }),
     runStatusReader: adminGateClient,
+    runDeliverableReader: adminGateClient,
     runAuditReader: adminGateClient,
     tenantProfileReader: adminGateClient,
     tenantEraser: adminGateClient,

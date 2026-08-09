@@ -215,6 +215,17 @@ export class ActionGate {
     return context;
   }
 
+  async readRunDeliverables({ capabilityHandle, ...input }) {
+    this.capabilities.authorize(capabilityHandle, {
+      subject: "admin",
+      action: ACTIONS.READ_RUN_DELIVERABLES,
+    });
+    if (!this.repository?.readRunDeliverables) {
+      throw new ConflictError("Run deliverable persistence is not configured");
+    }
+    return this.repository.readRunDeliverables(input);
+  }
+
   async persistMarketingPack({ capabilityHandle, agentName, ...input }) {
     this.capabilities.authorize(capabilityHandle, {
       subject: agentName,

@@ -130,6 +130,18 @@ export function createGateServer({ gate }) {
         return send(response, 200, result);
       }
 
+      const deliverablesMatch = url.pathname.match(
+        /^\/v1\/runs\/([^/]+)\/deliverables$/,
+      );
+      if (request.method === "GET" && deliverablesMatch) {
+        const result = await gate.readRunDeliverables({
+          capabilityHandle: bearer(request),
+          tenantId: url.searchParams.get("tenantId"),
+          runId: decodeURIComponent(deliverablesMatch[1]),
+        });
+        return send(response, 200, result);
+      }
+
       const artifactRevisionMatch = url.pathname.match(
         /^\/v1\/runs\/([^/]+)\/artifact-revision$/,
       );

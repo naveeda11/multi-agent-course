@@ -18,6 +18,7 @@ export const ACTIONS = Object.freeze({
   PERSIST_CATALOG: "persist-catalog",
   READ_ORDER_STATUS: "read-order-status",
   READ_RUN_CONTEXT: "read-run-context",
+  READ_RUN_DELIVERABLES: "read-run-deliverables",
   PERSIST_MARKETING_PACK: "persist-marketing-pack",
   PERSIST_SITE_ARTIFACT: "persist-site-artifact",
   VIDEO_RENDER: "video-render",

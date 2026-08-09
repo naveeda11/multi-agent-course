@@ -1336,6 +1336,79 @@ export class NeonRepository {
     };
   }
 
+  async readRunDeliverables({ tenantId, runId }) {
+    const run = await this.pool.query(
+      "SELECT 1 FROM runs WHERE id = $1 AND tenant_id = $2",
+      [runId, tenantId],
+    );
+    if (run.rowCount === 0) throw new NotFoundError(`Run ${runId} was not found`);
+    const [siteArtifact, deployAction, marketingAction, videoAction, marketingState] =
+      await Promise.all([
+        this.pool.query(
+          `SELECT html_content, content_hash, revision_number
+           FROM site_artifacts
+           WHERE run_id = $1 AND tenant_id = $2
+           ORDER BY revision_number DESC LIMIT 1`,
+          [runId, tenantId],
+        ),
+        this.pool.query(
+          `SELECT * FROM actions
+           WHERE run_id = $1 AND tenant_id = $2 AND action_type = 'deploy'
+           ORDER BY created_at DESC LIMIT 1`,
+          [runId, tenantId],
+        ),
+        this.pool.query(
+          `SELECT payload_hash, payload_json FROM actions
+           WHERE run_id = $1 AND tenant_id = $2
+             AND action_type = 'persist-marketing-pack' AND status = 'EXECUTED'
+           ORDER BY created_at DESC LIMIT 1`,
+          [runId, tenantId],
+        ),
+        this.pool.query(
+          `SELECT * FROM actions
+           WHERE run_id = $1 AND tenant_id = $2 AND action_type = 'video-render'
+           ORDER BY created_at DESC LIMIT 1`,
+          [runId, tenantId],
+        ),
+        this.pool.query(
+          `SELECT CASE
+             WHEN COUNT(*) = 0 THEN NULL
+             WHEN BOOL_AND(approval_status = 'APPROVED') THEN 'APPROVED'
+             WHEN BOOL_AND(approval_status = 'REJECTED') THEN 'REJECTED'
+             ELSE 'PENDING'
+           END AS approval_status
+           FROM marketing_artifacts WHERE run_id = $1 AND tenant_id = $2`,
+          [runId, tenantId],
+        ),
+      ]);
+    const site = siteArtifact.rows[0];
+    const deployment = parseAction(deployAction.rows[0]);
+    const marketing = marketingAction.rows[0];
+    return {
+      runId,
+      website: site && deployment
+        ? {
+            draft: { html: site.html_content },
+            persisted: {
+              contentHash: site.content_hash,
+              revisionNumber: Number(site.revision_number),
+            },
+            deployment: { action: deployment },
+          }
+        : null,
+      marketing: marketing
+        ? {
+            pack: marketing.payload_json.pack,
+            persisted: {
+              packHash: marketing.payload_hash,
+              videoAction: parseAction(videoAction.rows[0]),
+              approvalStatus: marketingState.rows[0]?.approval_status ?? "PENDING",
+            },
+          }
+        : null,
+    };
+  }
+
   async readTenantProfile({ tenantId }) {
     const result = await this.pool.query(
       `SELECT id, business_name, business_slug, business_email,

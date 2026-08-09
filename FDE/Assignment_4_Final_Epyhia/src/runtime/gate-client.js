@@ -310,6 +310,17 @@ export class ActionGateClient {
     return parseResponse(response);
   }
 
+  async readRunDeliverables({ tenantId, runId }) {
+    const url = new URL(
+      `${this.baseUrl}/v1/runs/${encodeURIComponent(runId)}/deliverables`,
+    );
+    url.searchParams.set("tenantId", tenantId);
+    const response = await this.fetch(url, {
+      headers: { authorization: `Bearer ${this.capabilityHandle}` },
+    });
+    return parseResponse(response);
+  }
+
   async readRunAudit({ tenantId, runId }) {
     const url = new URL(
       `${this.baseUrl}/v1/runs/${encodeURIComponent(runId)}/audit`,

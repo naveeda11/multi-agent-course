@@ -65,6 +65,7 @@ function buildHarness(provider = new FakeDeploymentProvider()) {
         ACTIONS.APPROVE,
         ACTIONS.READ_AUDIT,
         ACTIONS.READ_RUN_AUDIT,
+        ACTIONS.READ_RUN_DELIVERABLES,
         ACTIONS.READ_TENANT_PROFILE,
       ],
     },
@@ -362,6 +363,28 @@ describe("Action Gate deploy vertical slice", () => {
       tenantId: "tenant_demo",
     });
     assert.equal(profile.businessName, "Demo Tenant");
+  });
+
+  test("requires the admin capability to restore persisted run deliverables", async () => {
+    harness.repository.readRunDeliverables = async ({ tenantId, runId }) => ({
+      tenantId,
+      runId,
+      marketing: { persisted: { packHash: "a".repeat(64) } },
+    });
+    await assert.rejects(
+      harness.gate.readRunDeliverables({
+        capabilityHandle: WEB_HANDLE,
+        tenantId: "tenant_demo",
+        runId: "run_demo",
+      }),
+      (error) => error.code === "FORBIDDEN",
+    );
+    const result = await harness.gate.readRunDeliverables({
+      capabilityHandle: ADMIN_HANDLE,
+      tenantId: "tenant_demo",
+      runId: "run_demo",
+    });
+    assert.equal(result.marketing.persisted.packHash, "a".repeat(64));
   });
 
   test("keeps one stable deployment project per tenant", async () => {

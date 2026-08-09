@@ -146,6 +146,50 @@ test("authenticated run status crosses Tier 2 through an admin read capability",
   assert.equal(received[0].capabilityHandle, "http-tier-admin-capability");
 });
 
+test("persisted deliverables cross the admin read path without model replay", async () => {
+  const received = [];
+  const gateServer = createGateServer({
+    gate: {
+      async readRunDeliverables(input) {
+        received.push(input);
+        return {
+          runId: "run_restore_test",
+          website: null,
+          marketing: {
+            pack: { landingCopy: "Stored copy" },
+            persisted: { packHash: "b".repeat(64) },
+          },
+        };
+      },
+    },
+  });
+  const runDeliverableReader = new ActionGateClient({
+    baseUrl: "http://action-gate.internal",
+    capabilityHandle: "http-tier-admin-capability",
+    agentName: "admin",
+    fetchImpl: inMemoryFetch(gateServer),
+  });
+  const runtimeServer = createRuntimeServer({
+    runDeliverableReader,
+    tier1CapabilityHandle: TIER1_RUNTIME_HANDLE,
+  });
+  const runtimeClient = new RuntimeClient({
+    baseUrl: "http://runtime.internal",
+    capabilityHandle: TIER1_RUNTIME_HANDLE,
+    fetchImpl: inMemoryFetch(runtimeServer),
+  });
+
+  const result = await runtimeClient.readRunDeliverables({
+    tenantId: "tenant_restore_test",
+    runId: "run_restore_test",
+  });
+
+  assert.equal(result.marketing.pack.landingCopy, "Stored copy");
+  assert.equal(result.website, null);
+  assert.equal(received[0].tenantId, "tenant_restore_test");
+  assert.equal(received[0].capabilityHandle, "http-tier-admin-capability");
+});
+
 test("brand approval returns before independent generation requests", async () => {
   const received = [];
   const runtimeServer = createRuntimeServer({
@@ -368,6 +412,7 @@ test("every Tier 1 Runtime client method sends the capability", async () => {
   await runtimeClient.forwardStripeWebhook(Buffer.from("{}"), "stripe-signature");
   await runtimeClient.readOrderStatus("reservation", "https://business.example.test");
   await runtimeClient.readRunStatus({ tenantId: "tenant", runId: "run" });
+  await runtimeClient.readRunDeliverables({ tenantId: "tenant", runId: "run" });
   await runtimeClient.readRunAudit({ tenantId: "tenant", runId: "run" });
   await runtimeClient.readTenantProfile({ tenantId: "tenant" });
   await runtimeClient.eraseTenant({
@@ -424,7 +469,7 @@ test("every Tier 1 Runtime client method sends the capability", async () => {
     tenantId: "tenant",
   });
 
-  assert.equal(requests.length, 16);
+  assert.equal(requests.length, 17);
   for (const request of requests) {
     assert.equal(
       request.options.headers.authorization,

@@ -38,6 +38,7 @@ export function createRuntimeServer({
   webBuilder,
   approvalCoordinator,
   runStatusReader,
+  runDeliverableReader,
   runAuditReader,
   tenantProfileReader,
   tenantEraser,
@@ -88,6 +89,19 @@ export function createRuntimeServer({
           brandDocument: context.brandDocument,
           tasks: context.tasks,
         });
+      }
+      const runDeliverablesMatch = url.pathname.match(
+        /^\/v1\/runs\/([^/]+)\/deliverables$/,
+      );
+      if (request.method === "GET" && runDeliverablesMatch) {
+        return send(
+          response,
+          200,
+          await runDeliverableReader.readRunDeliverables({
+            tenantId: url.searchParams.get("tenantId"),
+            runId: decodeURIComponent(runDeliverablesMatch[1]),
+          }),
+        );
       }
       const runAuditMatch = url.pathname.match(/^\/v1\/runs\/([^/]+)\/audit$/);
       if (request.method === "GET" && runAuditMatch) {

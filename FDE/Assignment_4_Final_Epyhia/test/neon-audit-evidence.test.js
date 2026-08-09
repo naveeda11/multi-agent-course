@@ -93,6 +93,69 @@ test("tenant profile returns the business identity without exposing credentials"
   });
 });
 
+test("persisted run deliverables restore exact approval-bound payloads", async () => {
+  const pack = {
+    landingCopy: "Exact stored copy",
+    socialPosts: [],
+    launchEmail: "Stored email",
+    storyboard: {},
+  };
+  const responses = [
+    { rowCount: 1, rows: [{ exists: 1 }] },
+    {
+      rows: [{
+        html_content: "<!doctype html><title>Stored</title>",
+        content_hash: "site-hash",
+        revision_number: 2,
+      }],
+    },
+    {
+      rows: [{
+        id: "action_deploy",
+        tenant_id: "tenant_demo",
+        run_id: "run_demo",
+        action_type: "deploy",
+        payload_hash: "deploy-hash",
+        provider_cost_microdollars: 0,
+        status: "PENDING_APPROVAL",
+      }],
+    },
+    { rows: [{ payload_hash: "pack-hash", payload_json: { pack } }] },
+    {
+      rows: [{
+        id: "action_video",
+        tenant_id: "tenant_demo",
+        run_id: "run_demo",
+        action_type: "video-render",
+        payload_hash: "video-hash",
+        provider_cost_microdollars: 0,
+        status: "PENDING_APPROVAL",
+      }],
+    },
+    { rows: [{ approval_status: "PENDING" }] },
+  ];
+  const repository = new NeonRepository({
+    pool: {
+      async query() {
+        return responses.shift();
+      },
+    },
+  });
+
+  const result = await repository.readRunDeliverables({
+    tenantId: "tenant_demo",
+    runId: "run_demo",
+  });
+
+  assert.equal(result.website.draft.html, "<!doctype html><title>Stored</title>");
+  assert.equal(result.website.deployment.action.payloadHash, "deploy-hash");
+  assert.deepEqual(result.marketing.pack, pack);
+  assert.equal(result.marketing.persisted.packHash, "pack-hash");
+  assert.equal(result.marketing.persisted.videoAction.payloadHash, "video-hash");
+  assert.equal(result.marketing.persisted.approvalStatus, "PENDING");
+  assert.equal(responses.length, 0);
+});
+
 test("tenant profile returns null for a first-time Auth0 identity", async () => {
   const repository = new NeonRepository({
     pool: {
