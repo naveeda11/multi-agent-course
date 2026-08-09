@@ -6,12 +6,19 @@ progress/
 .env
 .env.*
 !.env.example
+fde4-epyhia-*.json
 
 # Dependencies, caches, and generated build output
 node_modules/
 dist/
 coverage/
+__pycache__/
+*.pyc
 .cache/
 .wrangler/
 *.log
 .DS_Store
+
+# Local Action Gate state and test deployments
+.data/
+.deployments/

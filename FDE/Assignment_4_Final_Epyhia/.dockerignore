@@ -1,0 +1,17 @@
+.git
+.env
+.env.*
+!.env.example
+fde4-epyhia-*.json
+node_modules
+.data
+.deployments
+.wrangler
+coverage
+dist
+*.log
+*.rtf
+progress
+test
+scripts
+deploy

@@ -1,0 +1,38 @@
+{
+  "name": "epyhia",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=22.13"
+  },
+  "scripts": {
+    "start:gate": "node --env-file=.env scripts/start-tier.js gate",
+    "start:runtime": "node --env-file=.env scripts/start-tier.js runtime",
+    "start:web": "node --env-file=.env scripts/start-tier.js web",
+    "migrate:gate": "node --env-file=.env scripts/migrate-gate.js",
+    "verify:gate-schema": "node --env-file=.env scripts/verify-gate-schema.js",
+    "verify:neon-onboarding": "node --env-file=.env scripts/verify-neon-onboarding.js",
+    "verify:providers": "node --env-file=.env scripts/verify-provider-access.js",
+    "diagnose:cloudflare": "node --env-file=.env scripts/diagnose-cloudflare-access.js",
+    "verify:deployment-access": "node --env-file=.env scripts/verify-deployment-access.js",
+    "verify:r2-write": "node --env-file=.env scripts/verify-r2-write.js",
+    "prepare:fly-apps": "node --env-file=.env scripts/prepare-fly-apps.js",
+    "configure:fly-secrets": "node --env-file=.env scripts/configure-fly-secrets.js",
+    "deploy:fly": "node --env-file=.env scripts/deploy-fly.js",
+    "configure:stripe-webhook": "node --env-file=.env scripts/configure-stripe-webhook.js",
+    "demo:gate": "node scripts/demo-action-gate.js",
+    "test": "node --test",
+    "check": "node --check src/gate/server.js && node --check src/gate/config.js && node --check src/gate/action-gate.js && node --check src/gate/repository.js && node --check src/gate/neon-repository.js && node --check src/gate/model-service.js && node --check src/gate/catalog-service.js && node --check src/gate/checkout-service.js && node --check src/gate/marketing-service.js && node --check src/gate/price-grounding.js && node --check src/gate/site-service.js && node --check src/gate/video-service.js && node --check src/gate/providers/cloudflare-deployment.js && node --check src/gate/providers/openai-responses.js && node --check src/gate/providers/r2-artifact-storage.js && node --check src/gate/providers/stripe-sandbox.js && node --check src/gate/providers/vertex-veo.js && node --check src/runtime/gate-client.js && node --check src/runtime/onboarding-runtime.js && node --check src/runtime/marketer.js && node --check src/runtime/web-builder.js && node --check src/runtime/approval-coordinator.js && node --check src/runtime/server.js && node --check src/web/runtime-client.js && node --check src/web/server.js && node --check eval/auth0-evidence.js && node --check eval/r2-evidence.js && node --check scripts/configure-fly-secrets.js && node --check scripts/configure-stripe-webhook.js && node --check scripts/deploy-fly.js && node --check scripts/diagnose-cloudflare-access.js && node --check scripts/migrate-gate.js && node --check scripts/prepare-fly-apps.js && node --check scripts/start-tier.js && node --check scripts/verify-deployment-access.js && node --check scripts/verify-gate-schema.js && node --check scripts/verify-neon-onboarding.js && node --check scripts/verify-provider-access.js && node --check scripts/verify-r2-write.js"
+  },
+  "dependencies": {
+    "@aws-sdk/client-s3": "^3.1106.0",
+    "express": "^5.2.1",
+    "express-openid-connect": "^3.4.0",
+    "google-auth-library": "^11.0.0",
+    "openai": "^7.4.0",
+    "pg": "^8.23.0",
+    "stripe": "^22.4.0",
+    "wrangler": "^4.120.0"
+  }
+}

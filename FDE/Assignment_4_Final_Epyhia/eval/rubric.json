@@ -1,0 +1,14 @@
+{
+  "title": "EPYHIA Product Evaluation",
+  "total_points": 100,
+  "checks": [
+    { "id": "live_business_site", "area": "Real deliverables", "points": 10 },
+    { "id": "complete_marketing_pack", "area": "Real deliverables", "points": 10 },
+    { "id": "persisted_paid_order", "area": "Real deliverables", "points": 10 },
+    { "id": "grounded_non_slop_site", "area": "Not slop", "points": 15 },
+    { "id": "crew_trace_and_brand", "area": "Crew and orchestration", "points": 15 },
+    { "id": "action_gate_controls", "area": "Action Gate", "points": 20 },
+    { "id": "design_first", "area": "Design and failure catalogue", "points": 10 },
+    { "id": "deployed_agency_and_clean_clone", "area": "Ships and runs", "points": 10 }
+  ]
+}

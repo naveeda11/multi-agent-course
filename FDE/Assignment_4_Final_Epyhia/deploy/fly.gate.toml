@@ -1,0 +1,29 @@
+primary_region = "sjc"
+
+[build]
+  dockerfile = "../Dockerfile"
+
+[processes]
+  app = "node src/gate/server.js"
+
+[env]
+  NODE_ENV = "production"
+  ACTION_GATE_HOST = "::"
+  ACTION_GATE_PORT = "4100"
+  ACTION_GATE_AUTO_MIGRATE = "true"
+  DEPLOY_PROVIDER = "cloudflare"
+  HEALTHCHECK_URL = "http://127.0.0.1:4100/health"
+
+[checks.gate]
+  type = "http"
+  port = 4100
+  method = "GET"
+  path = "/health"
+  interval = "15s"
+  timeout = "5s"
+  grace_period = "30s"
+
+[[vm]]
+  memory = "1gb"
+  cpu_kind = "shared"
+  cpus = 1
