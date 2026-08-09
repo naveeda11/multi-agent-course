@@ -7,7 +7,7 @@ import { Auth0ManagementProvider } from "../src/gate/providers/auth0-management.
 import { StripeSandboxProvider } from "../src/gate/providers/stripe-sandbox.js";
 import { AuthenticationError, ProviderError, ValidationError } from "../src/shared/errors.js";
 
-test("tenant erasure removes every provider footprint before deleting Neon and Auth0", async () => {
+test("tenant erasure removes every business footprint while retaining Auth0 identity", async () => {
   const calls = [];
   const service = new ErasureService({
     repository: {
@@ -44,23 +44,17 @@ test("tenant erasure removes every provider footprint before deleting Neon and A
         return { sessions: [{ sessionId: "cs_test_demo" }] };
       },
     },
-    auth0Provider: {
-      async deleteUser() {
-        calls.push("auth0");
-        return { deleted: true };
-      },
-    },
   });
 
   const result = await service.erase({
     tenantId: "tenant_demo",
-    auth0UserId: "google-oauth2|demo",
   });
   assert.equal(result.deleted, true);
-  assert.deepEqual(calls, ["manifest", "cloudflare", "r2", "stripe", "neon", "auth0"]);
+  assert.deepEqual(result.auth0, { deleted: false, reason: "identity-retained" });
+  assert.deepEqual(calls, ["manifest", "cloudflare", "r2", "stripe", "neon"]);
 });
 
-test("tenant erasure keeps Neon and Auth0 intact when undeploy verification fails", async () => {
+test("tenant erasure keeps Neon intact when undeploy verification fails", async () => {
   const calls = [];
   const service = new ErasureService({
     repository: {
@@ -83,10 +77,9 @@ test("tenant erasure keeps Neon and Auth0 intact when undeploy verification fail
     },
     storage: { async deletePrefix() { calls.push("r2"); } },
     stripeProvider: { async eraseCheckoutSessions() { calls.push("stripe"); } },
-    auth0Provider: { async deleteUser() { calls.push("auth0"); } },
   });
   await assert.rejects(
-    service.erase({ tenantId: "tenant_demo", auth0UserId: "auth0|demo" }),
+    service.erase({ tenantId: "tenant_demo" }),
     ProviderError,
   );
   assert.deepEqual(calls, []);

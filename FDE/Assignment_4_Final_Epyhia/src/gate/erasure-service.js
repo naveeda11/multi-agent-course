@@ -1,19 +1,18 @@
 import { ConflictError, ValidationError } from "../shared/errors.js";
 
 export class ErasureService {
-  constructor({ repository, deploymentProvider, storage, stripeProvider, auth0Provider }) {
+  constructor({ repository, deploymentProvider, storage, stripeProvider }) {
     this.repository = repository;
     this.deploymentProvider = deploymentProvider;
     this.storage = storage;
     this.stripeProvider = stripeProvider;
-    this.auth0Provider = auth0Provider;
   }
 
-  async erase({ tenantId, auth0UserId }) {
+  async erase({ tenantId }) {
     if (!this.repository?.readErasureManifest || !this.repository?.deleteTenantData) {
       throw new ConflictError("Tenant erasure persistence is not configured");
     }
-    if (!this.storage || !this.stripeProvider || !this.auth0Provider) {
+    if (!this.storage || !this.stripeProvider) {
       throw new ConflictError("Every tenant erasure provider must be configured");
     }
     if (typeof tenantId !== "string" || tenantId.length < 3 || tenantId.length > 200) {
@@ -40,7 +39,6 @@ export class ErasureService {
       database = await this.repository.deleteTenantData({ tenantId });
     }
 
-    const auth0 = await this.auth0Provider.deleteUser(auth0UserId);
     return {
       tenantId,
       deleted: true,
@@ -48,7 +46,7 @@ export class ErasureService {
       r2,
       stripe,
       database,
-      auth0,
+      auth0: { deleted: false, reason: "identity-retained" },
     };
   }
 }

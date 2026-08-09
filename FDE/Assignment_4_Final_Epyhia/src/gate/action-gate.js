@@ -331,7 +331,7 @@ export class ActionGate {
     if (!this.erasureService) {
       throw new ConflictError("Tenant erasure is not configured");
     }
-    return this.erasureService.erase({ tenantId, auth0UserId });
+    return this.erasureService.erase({ tenantId });
   }
 
   async executeDeploy({ capabilityHandle, actionId, agentName }) {

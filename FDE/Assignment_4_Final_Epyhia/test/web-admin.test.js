@@ -47,7 +47,8 @@ test("admin page locks an existing tenant business while allowing a new brief", 
   );
   assert.match(html, /permanently bound to this Auth0 identity/);
   assert.match(html, /Delete business and undeploy/);
-  assert.match(html, /Delete everything/);
+  assert.match(html, /Delete business/);
+  assert.match(html, /Auth0 login is retained/);
   assert.match(html, /value="Naveed&#39;s Party Rentals" readonly/);
   assert.match(html, /value="naveedspartyrentals" readonly/);
   assert.match(html, /value="rentals@example\.test" readonly/);
