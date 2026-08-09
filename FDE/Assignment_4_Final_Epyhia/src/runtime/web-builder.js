@@ -31,6 +31,17 @@ function parseJson(outputText, label) {
   }
 }
 
+function addRecoveredColorSchemePreference(html) {
+  if (/prefers-color-scheme/i.test(html)) return html;
+  const styleEnd = html.toLowerCase().lastIndexOf("</style>");
+  if (styleEnd === -1) {
+    throw new ValidationError("Recovered Website draft has no style block");
+  }
+  const preference =
+    "@media (prefers-color-scheme: dark){:root:not([data-theme]){color-scheme:dark}}";
+  return `${html.slice(0, styleEnd)}${preference}${html.slice(styleEnd)}`;
+}
+
 export class WebBuilder {
   constructor({ gateClient, publicApiBaseUrl, maxDrafts = 3 }) {
     this.gateClient = gateClient;
@@ -126,10 +137,11 @@ export class WebBuilder {
 
   async recoverReviewedBuild({ tenantId, runId, idempotencyKey }) {
     const recovered = await this.gateClient.recoverSiteArtifact({ tenantId, runId });
+    const html = addRecoveredColorSchemePreference(recovered.draft.html);
     const persisted = await this.gateClient.persistSiteArtifact({
       tenantId,
       runId,
-      html: recovered.draft.html,
+      html,
       publicApiBaseUrl: this.publicApiBaseUrl,
       review: recovered.review,
       revisionNumber: recovered.revisionNumber,
@@ -143,7 +155,7 @@ export class WebBuilder {
       idempotencyKey: `${idempotencyKey}:deploy`,
     });
     return {
-      draft: recovered.draft,
+      draft: { html },
       review: recovered.review,
       persisted,
       deployment,

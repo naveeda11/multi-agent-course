@@ -318,7 +318,7 @@ test("WebBuilder recovers a passed draft without making another model call", asy
     async recoverSiteArtifact(input) {
       calls.push(["recover", input]);
       return {
-        draft: { html: validHtml },
+        draft: { html: validHtml.replace("prefers-color-scheme", "manual-color-scheme") },
         review: { status: "PASSED", feedback: [] },
         revisionNumber: 2,
       };
@@ -352,6 +352,7 @@ test("WebBuilder recovers a passed draft without making another model call", asy
 
   assert.deepEqual(calls.map(([kind]) => kind), ["recover", "persist", "deploy"]);
   assert.equal(calls[1][1].revisionNumber, 2);
+  assert.match(calls[1][1].html, /prefers-color-scheme: dark/);
   assert.equal(calls[1][1].idempotencyKey, "web-build:run_demo:persist");
   assert.equal(calls[2][1].idempotencyKey, "web-build:run_demo:deploy");
   assert.equal(result.recovered, true);
