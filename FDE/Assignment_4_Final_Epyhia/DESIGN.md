@@ -19,15 +19,16 @@ Out of scope: late fees, customer alerts or reminders, backend delivery scheduli
 Flow 1 - Business Creation Flow (interactive - 2-5 minutes of time including human interactions)
 Administrator (me) logs in and in the Admin dashboard of epyhia, enters a business description prompt. 
 
-The Orchestrator/Strategist checks the completeness of the brief
+Tier 1 forwards the authenticated submission and administrator identity to deterministic control-plane code in the Orchestration Runtime. The Runtime requests a plain Action Gate storage action—without an LLM call—to create the onboarding request and run shell in one transaction. The shell has status CREATED, the original brief and hash, the administrator-approved budget and approver identity, and a NULL brand_document_id. Retrying the same (tenant_id, idempotency_key) returns this existing run_id. Tier 1 never calls Tier 3 directly.
+
+The Orchestrator/Strategist checks the completeness of the brief against that run_id
 - data exists for initial population of business catalog (Ops agent request the Action Gate to do persist catalog data in DB)
 
 If the prompt is considered incomplete, getting more information is done by interactively asking the user through Tier 1
 
-Orchestrator produces the completed brief, brand identity document, and task plan.
-Ops will do the persistence of this info. 
-The orchestrator delegates to Ops for persistence. Ops invokes the Action Gate to create an entry for business creation which consists of 
-Business name, tenant id, and persists the brand doc, and creates a task list (status) along with task records. 
+Orchestrator produces the completed brief, brand identity document, and task plan. Every inference is routed by the Runtime through the Action Gate and logged against the run shell.
+Ops will do the semantic finalization and persistence of these outputs.
+The orchestrator delegates to Ops for finalization. Ops invokes the Action Gate to persist a new brand-document version, set the run's brand_document_id, create the task records, and transition the same run to EXECUTING. Run-shell creation is deterministic control-plane work and is never routed through an Ops model call.
 
 
 One that is done - then a dashboard view is created so that the user can see the status (brand document - pending, Web Builder: Pending, Maketing: Pending)
@@ -136,7 +137,9 @@ flowchart TD
     Customer -->|checkout request| API
     StripeWH -->|"signed event (raw body forwarded unchanged)"| API
 
-    API -->|brief / clarifications| Strategist
+    API -->|authenticated brief| Runtime
+    Runtime -->|deterministic run-shell storage| Gate
+    Runtime -->|run_id + brief / clarifications| Strategist
     API -->|checkout + webhook passthrough| Ops
     Strategist -->|delegates tasks| WebBuilder
     Strategist -->|delegates tasks| Marketer
@@ -319,8 +322,8 @@ Note that the actions log is the audit table
 
 
 Table: runs
-id (primary key), tenant_id, original_brief, brief_hash,
-brand_document_id, approved_budget_microdollars, status, created_at, completed_at
+id (primary key), tenant_id, original_brief, completed_brief, brief_hash,
+brand_document_id, approved_budget_microdollars, budget_approved_by, status, created_at, completed_at
 
 Table: agent_calls
 id (primary key), run_id (foreign key → runs.id),
@@ -389,8 +392,6 @@ Failure Catalog
 5. Tenant Customer gets false information put on their marketing copy.  Fabricated social proof - incorporate into the marketing prompt to be honest and not include reviews/testimonials 
 6. Business Customer receives inaccurate reservation confirmation information. Business logic - double booking avoidable. Business logic checks for quantity available before booking using SELECT for UPDATE Also needs to check date overlaps. .
 7. Inaccurate descriptions on website vs DB Schema. After website is generated, conduct a programmatic check of the website vs business catalog descriptions and prices
-
-
 
 
 
