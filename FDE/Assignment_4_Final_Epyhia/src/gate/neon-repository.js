@@ -1017,7 +1017,7 @@ export class NeonRepository {
       [runId, tenantId],
     );
     if (run.rowCount === 0) throw new NotFoundError(`Run ${runId} was not found`);
-    const [calls, actions, costs] = await Promise.all([
+    const [calls, actions, costs, evidence] = await Promise.all([
       this.pool.query(
         `SELECT id, agent_name, model_id, model_tier, input_tokens,
           cached_input_tokens, output_tokens, cost_microdollars, status,
@@ -1040,6 +1040,26 @@ export class NeonRepository {
             WHERE run_id = $1), 0) AS provider_cost`,
         [runId],
       ),
+      this.pool.query(
+        `SELECT
+          (SELECT COUNT(*) FROM deployments WHERE tenant_id = $1) AS deployment_count,
+          (SELECT COUNT(*) FROM site_artifacts WHERE run_id = $2) AS site_artifact_count,
+          (SELECT COUNT(*) FROM orders WHERE tenant_id = $1 AND status = 'PAID')
+            AS paid_order_count,
+          (SELECT COUNT(*) FROM (
+            SELECT reservation_id FROM orders WHERE tenant_id = $1
+            GROUP BY reservation_id HAVING COUNT(*) > 1
+          ) duplicate_reservations) AS duplicate_order_groups,
+          (SELECT cloudflare_project_name FROM deployments
+            WHERE tenant_id = $1 LIMIT 1) AS project_name,
+          (SELECT live_url FROM deployments
+            WHERE tenant_id = $1 LIMIT 1) AS live_url,
+          (SELECT last_action_id FROM deployments
+            WHERE tenant_id = $1 LIMIT 1) AS deployment_action_id,
+          ARRAY(SELECT id FROM orders WHERE tenant_id = $1 AND status = 'PAID'
+            ORDER BY created_at) AS order_ids`,
+        [tenantId, runId],
+      ),
     ]);
     const modelCostMicrodollars = Number(costs.rows[0].model_cost);
     const providerCostMicrodollars = Number(costs.rows[0].provider_cost);
@@ -1052,6 +1072,16 @@ export class NeonRepository {
         modelCostMicrodollars,
         providerCostMicrodollars,
         totalCostMicrodollars: modelCostMicrodollars + providerCostMicrodollars,
+      },
+      idempotencyEvidence: {
+        deploymentCount: Number(evidence.rows[0].deployment_count),
+        siteArtifactCount: Number(evidence.rows[0].site_artifact_count),
+        paidOrderCount: Number(evidence.rows[0].paid_order_count),
+        duplicateOrderGroups: Number(evidence.rows[0].duplicate_order_groups),
+        projectName: evidence.rows[0].project_name,
+        liveUrl: evidence.rows[0].live_url,
+        deploymentActionId: evidence.rows[0].deployment_action_id,
+        orderIds: evidence.rows[0].order_ids ?? [],
       },
       modelCalls: calls.rows.map((call) => ({
         id: call.id,

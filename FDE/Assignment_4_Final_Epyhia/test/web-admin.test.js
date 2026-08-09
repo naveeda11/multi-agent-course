@@ -24,6 +24,12 @@ test("admin page compiles its browser script and reuses one onboarding key for c
   assert.ok(script);
   assert.doesNotThrow(() => new Function(script));
   assert.match(script, /onboardingKey=crypto\.randomUUID\(\)/);
+  assert.match(script, /webBuildKey='web-build:'\+runId/);
+  assert.match(script, /web-build',\{\},webBuildKey/);
+  assert.match(script, /replay\.persisted\.replayed===true/);
+  assert.match(script, /paidOrderCount>0/);
+  assert.match(script, /duplicateOrderGroups===0/);
+  assert.match(html, /Re-run same build and verify/);
   assert.match(script, /Continue the same run/);
   assert.match(script, /clarificationAnswers:clarificationHistory/);
   assert.match(script, /Question:.*Answer:/s);

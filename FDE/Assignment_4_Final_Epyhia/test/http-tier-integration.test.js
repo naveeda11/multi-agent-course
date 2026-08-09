@@ -159,6 +159,16 @@ test("tenant-bound audit and cost data crosses only the admin read path", async 
             providerCostMicrodollars: 0,
             totalCostMicrodollars: 12_000,
           },
+          idempotencyEvidence: {
+            deploymentCount: 1,
+            siteArtifactCount: 1,
+            paidOrderCount: 1,
+            duplicateOrderGroups: 0,
+            projectName: "epyhia-demo",
+            liveUrl: "https://epyhia-demo.pages.dev",
+            deploymentActionId: "action_deploy",
+            orderIds: ["order_demo"],
+          },
           modelCalls: [
             { agentName: "strategist", modelTier: "sol", costMicrodollars: 12_000 },
           ],
@@ -190,6 +200,8 @@ test("tenant-bound audit and cost data crosses only the admin read path", async 
   });
   assert.equal(result.costs.totalCostMicrodollars, 12_000);
   assert.equal(result.modelCalls[0].modelTier, "sol");
+  assert.equal(result.idempotencyEvidence.deploymentCount, 1);
+  assert.equal(result.idempotencyEvidence.duplicateOrderGroups, 0);
   assert.equal(received[0].tenantId, "tenant_audit_test");
   assert.equal(received[0].runId, "run_audit_test");
   assert.equal(received[0].capabilityHandle, "http-tier-admin-capability");
