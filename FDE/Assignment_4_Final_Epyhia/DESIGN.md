@@ -27,7 +27,7 @@ If the prompt is considered incomplete, getting more information is done by inte
 Orchestrator produces the completed brief, brand identity document, and task plan.
 Ops will do the persistence of this info. 
 The orchestrator delegates to Ops for persistence. Ops invokes the Action Gate to create an entry for business creation which consists of 
-Business name, business id, and persists the brand doc, and creates a task list (status) along with task records. 
+Business name, tenant id, and persists the brand doc, and creates a task list (status) along with task records. 
 
 
 One that is done - then a dashboard view is created so that the user can see the status (brand document - pending, Web Builder: Pending, Maketing: Pending)
@@ -36,7 +36,7 @@ Polling will happen in the background against this task table and then the dashb
 
 The web builder , using the brand doc, will be kicked off to start the task for HTML/CSS generation based on design criteria, That HTML/CSS is persisted, and then pushed to Cloudflare and a URL is returned and stored. The task table is updated. 
 
-The marketer using the brand doc, will generate the marketing copy for the website along with marketing posts. Marketing posts will be stored in another DB table (segregated with tenant Id) and generate a story board. That is a human review, and if the story board is approved, then a video is generated (via Veo) . Marketing actions will need human review so the dashboard will reflect the need for human review. If editing is needed, the human can prompt for the change (max 5 Veo generations per tenant for both types of Veo renders) otherwise the task dashboard is updated and the marketing collateral is stored. Story board generation is cheaper then Veo, so splitting it to require one approval for story board and the other for Veo generation.
+The marketer using the brand doc, will generate the marketing copy for the website along with marketing posts. Marketing posts will be stored in marketing_artifacts (segregated with tenant Id) and generate a story board. That is a human review, and if the story board is approved, then a video is generated (via Veo) . Marketing actions will need human review so the dashboard will reflect the need for human review. If editing is needed, the human can prompt for the change (max 5 Veo generations per tenant for both types of Veo renders) otherwise the task dashboard is updated and the marketing collateral is stored. Story board generation is cheaper then Veo, so splitting it to require one approval for story board and the other for Veo generation.
 The Vertical Cut video will be a 2nd Veo invocation. 
 Veo Video Generation via kdowswell/veo-tools
 
@@ -56,8 +56,8 @@ Business operations flow for party rental
 
 Business Customer Order Persistence
 Table: Orders 
-id, created_at, tenant_id, reservation_id, stripe_checkout_session, amount, currency, status, payment_timestamp
-Both reservation and stripe_checkout_session are separately unique
+id, created_at, tenant_id, reservation_id, stripe_checkout_session_id, amount, currency, status, payment_timestamp
+Both reservation_id and stripe_checkout_session_id are separately unique
 
 Table: webhook_events 
 id, created_at, stripe_event_id (primary key)
@@ -75,7 +75,20 @@ Flow 3 - expired reservations cleanup
 Business Operations Flow for Expired Rentals (Abandoned checkout)
 If a customer reserves but never pays, we have abandoned checkouts. Use Stripe Checkout expiration web book to cancel those after 1 hr. 
 
+Important Notes: Stripe always uses test-mode keys.
+Email goes only to a configured mail catcher.
 
+Social publishing produces drafts or sandbox records—never posts to real accounts.
+Cloudflare deployment is a public, live action and needs admin approval (bound to deployment hash) prior to Tier 3 execution.
+Paid video rendering remains disabled until the administrator approves the exact storyboard/payload and cost.
+All actions default to TEST; the gate rejects unsupported LIVE actions.
+
+For Stripe checkout:
+The browser sends only item IDs, quantities, rental dates, and customer details.
+It never sends an authoritative price, total, currency, or tenant ID.
+Tier 3 loads catalog prices from Neon, validates date overlap and availability, calculates rental days and the total in cents, and creates Stripe line items.
+Tenant identity comes from the site/host mapping or authenticated context.
+The webhook compares Stripe amount and currency with the persisted reservation before creating the order.
 
 
 Implementation Architecture
@@ -87,6 +100,69 @@ Node API Gateway
 Node backend workers
 Storage: Neon DB and Cloudflare R2 
 Authentication: Auth0 
+
+```mermaid
+flowchart TD
+    Admin["Administrator<br/>(brief, reviews, approvals)"]
+    Customer["Customer<br/>(generated site on Cloudflare Pages)"]
+    StripeWH["Stripe webhooks<br/>(checkout.session.completed / expired)"]
+
+    subgraph T1["Tier 1 - Public web app (Fly.io, public ingress, no credentials)"]
+        API["Node API Gateway<br/>Auth0 login · admin dashboard · checkout API · webhook intake"]
+    end
+
+    subgraph T2["Tier 2 - Agent workers (private, scoped capabilities, no credentials)"]
+        Runtime["Orchestration Runtime<br/>(runs agent loops, proxies all inference)"]
+        Strategist["Strategist<br/>(Sol 5.6)"]
+        WebBuilder["Web Builder<br/>(Sol 5.6)"]
+        Marketer["Marketer<br/>(Terra 5.6)"]
+        Ops["Ops<br/>(Luna 5.6)"]
+    end
+
+    subgraph T3["Tier 3 - Action Gate (private, no public inbound, sole credential holder)"]
+        Gate["capability check → approval check → run budget → idempotency → audit + cost log<br/>/model_call · /deploy · /checkout-session · /video-render · /publish"]
+    end
+
+    subgraph EXT["External providers"]
+        OpenAI["OpenAI"]
+        CF["Cloudflare<br/>Pages"]
+        Stripe["Stripe<br/>(test mode)"]
+        Veo["Veo"]
+        Neon["Neon DB"]
+        R2["R2"]
+    end
+
+    Admin -->|brief + approvals| API
+    Customer -->|checkout request| API
+    StripeWH -->|"signed event (raw body forwarded unchanged)"| API
+
+    API -->|brief / clarifications| Strategist
+    API -->|checkout + webhook passthrough| Ops
+    Strategist -->|delegates tasks| WebBuilder
+    Strategist -->|delegates tasks| Marketer
+    Strategist -->|delegates tasks| Ops
+
+    Strategist --- Runtime
+    WebBuilder --- Runtime
+    Marketer --- Runtime
+    Ops --- Runtime
+    Runtime -->|"/model_call for scoped agent"| Gate
+
+    WebBuilder -->|"/deploy (admin-approved)"| Gate
+    Marketer -->|"/video-render (admin-approved) · /publish (sandbox)"| Gate
+    Ops -->|"/checkout-session · catalog + order storage"| Gate
+
+    Gate -.->|"pending approvals surface on dashboard"| API
+    CF -.->|"evidence: verified URL + HTTP 200"| Gate
+    Neon -.->|"evidence: persisted order row"| Gate
+
+    Gate --> OpenAI
+    Gate --> CF
+    Gate --> Stripe
+    Gate --> Veo
+    Gate --> Neon
+    Gate --> R2
+```
 
 1. Tier 1 — Public web app, reachable from the internet.
 2. Tier 2 — Private Strategist, Web Builder, Marketer, and Ops workers. Tier 2 is reachable only from Tier 1, receives scoped capability handles, has no public ingress, and holds no credentials.
@@ -118,8 +194,8 @@ Action Code (gated) needs
 - run_id, tenant_id, agent_name, action, destination_url, destination_params, cost, approved_by, timestamp, idempotency_key, status (pending_approval, approved, executed, failed) and mode (test or live), payload_hash, approved_at
 Approval applies to a specific payload only. 
 /deploy will deploy to Cloudflare 
-/ charge works against Stripe test mode
-/ publish - for video renders or social media and email
+/checkout_session works against Stripe test mode
+/publish - for video renders or social media and email
 
 Orchestrator, Marketer, Web Builder, Ops agents are in the Tier 2 group.
 They are independently scalable. 
@@ -163,7 +239,7 @@ The idea will be to parameterize this prompt template.
 Ops 
 Asks the Action Gate to persist the initial catalog in DB
 Does not initiate deployment, video generation, , or customer payment actions
-
+Does not charge directly, requests a checkout_session after customer initiates checkout.
 Ops lower intelligence tier: OpenAI Luna 5.6
 - this is doing directed business actions and does not need to independently reason
 - check for Avoiding AI slop for marketing accuracy
@@ -176,6 +252,12 @@ Non-LLM checks
 - check contact details match customer details 
 - validate hyperlinks , valid HTML, images are valid, viewport meta is present, URLs return 200 status
 
+Summary of Capabilities with respect to external systems
+Strategist: clarification and delegation only.
+Web Builder: site storage and approved deploy requests.
+Marketer: artifact storage, approved video-render requests, and sandbox publishing.
+Ops: catalog/reservation storage, Checkout Session requests, and persisted-order verification.
+Tier 3 rejects any requested capability not explicitly allowed for that agent. Capability authorization never replaces the required administrator or customer approval.
 
 Pricing for short context as of August 8, 2026
 gpt-5.6-sol $5.00 per 1M input tokens / $30.00 for 1M output tokens
@@ -186,22 +268,82 @@ gpt-5.6-luna $0.20 per 1M input tokens / $1.20 for 1M output tokens
 Database Schema 
 
 Table: tasks (for admin dashboard)
-id, tenant_id, run_id, task_type, status, output_ref, updated_at, with a unique key on (tenant_id, task_type).
-
-Table: Customer  (note: this is a customer of the business) 
-id, tenant_id, name, email
+id, tenant_id, run_id, task_type, status, output_ref, updated_at, with a unique key on (run_id, task_type).
 
 Table: Tenants (note: this is a customer of Epyhia)
-Id, name, email
+Id, name, email, business_name, business_slug, business_email, business_phone, business_address
 
-Table: marketing_posts
-Id, tenant_id, medium (email, Facebook), contents, status
+marketing_artifacts:
+id, tenant_id, run_id (foreign key → runs.id),
+brand_document_id, artifact_type, sequence_number, channel,
+text_content, r2_object_key, mime_type,
+self_review_status, grounding_check_status, review_feedback,
+approval_status, approved_by, approved_at,
+created_at, updated_at
+
+artifact_type is one of 
+LANDING_COPY, SOCIAL_POST, LAUNCH_EMAIL
+VIDEO_STORYBOARD, VIDEO_LANDSCAPE,  VIDEO_VERTICAL
+
+unique (run_id, artifact_type, sequence_number)
+Notes: Video storage in R2. The DB  stores metadata and object references.
+The Marketer’s self-review and factual-grounding check must pass before an artifact becomes approval-eligible.
+Storyboard approval occurs before the paid video-render action.
+Every artifact needs to reference the brand-document version that produced it.
+Reruns create artifacts under a new run_id
+they do not overwrite the earlier pack.
+If an artifact is text, text_content is not empty. whereas for videos, r2_object_key and mime_type must be present. 
+Marketing tasks are COMPLETE when the run contains sufficient content (1 landing copy, 1 email, 1 storyboard , 1 landscape and 1 vertifcal video, and 3-5 posts) referencing the same brand_document_id
 
 Table: reservations (id, tenant_id, customer_id, start_date, end_date, status, total, stripe_checkout_session_id, created_at)
 Table: reservation_items (id, reservation_id, rental_item_id, qty, day_rate)
 Table: rental_items(id, tenant_id, name, description, available_qty, day_Rate)
 
+customers:
+id, tenant_id, name, email, normalized_email
+normalized_email = lower(trim(email))
+unique (tenant_id, normalized_email)
+
+deployments:
+id, tenant_id, cloudflare_project_name,
+live_url, last_action_id, verified_at, updated_at
+unique (tenant_id)
+unique (cloudflare_project_name)
+
+onboarding_requests:
+id, tenant_id, idempotency_key, run_id (foreign key of runs.id), created_at
+unique (tenant_id, idempotency_key)
+
 Note that the actions log is the audit table
+
+
+
+Table: runs
+id (primary key), tenant_id, original_brief, brief_hash,
+brand_document_id, approved_budget_microdollars, status, created_at, completed_at
+
+Table: agent_calls
+id (primary key), run_id (foreign key → runs.id),
+task_id (foreign key → tasks.id), agent_name, model_id, model_tier,
+input_tokens, cached_input_tokens, output_tokens, cost_microdollars,
+status, started_at, completed_at
+
+Table: actions
+id (primary key), tenant_id, run_id (foreign key → runs.id),
+agent_name, action_type, payload_hash, idempotency_key, mode,
+approval_status, approved_by, approved_at, provider_reference,
+provider_cost_microdollars, status, created_at, executed_at
+
+Unique constraint:
+(tenant_id, action_type, idempotency_key)
+
+Requirements for these:
+Store monetary cost as integer microdollars, not floating point.
+Never store credentials or unredacted payment data in audit payloads.
+run_id must connect brief to tasks to agent calls to actions.
+runs.total_cost_microdollars is derived from agent calls and paid provider actions
+It is a query derived from agent_calls.cost_microdollars + actions.provider_cost_microdollars
+
 
 Brand Document
 
@@ -220,18 +362,23 @@ What's in it:
 where does it live: 
 Brand_document_table which is a versioning table of brand documents per tenant. The full_text is stored in the DB table
 Schema: id, tenant_id, version_number, full_text
-
+Unique on (tenant_id, version_number)
 If the brand document changes (via the Admin Dashboard), a new entry is created and then the sequence of marketing website and social media posts is re-run. 
 
 IDempotency
 
 Idempotency for business creation (tenant onboarding) is described in onboarding with the task list.
-If the same brief is submitted twice (by the same user) then the 2nd brief would be rejected and the task dashboard from the original submission is brought up. The rejection appears as a status bar on the Admin Dashboard (user presses X to dismiss) If there are failed tasks, those should be resubmittable. 
+Duplicate brief submission
+brief_hash may warn the administrator that identical content was previously submitted, but it does not enforce idempotency. The same idempotency key returns the existing run; a new key intentionally creates a new run for the same tenant business and deployment.
 
 Deployment Idempotency: one Cloudflare project per tenant; re-deploy overwrites, never creates a second site. 
 
 Stripe idempotency: derived from the reservation id; webhook handler dedupes by Stripe event id (Stripe retries webhooks)
 
+Database rules
+Retrying with the same onboarding idempotency key returns the existing run and dashboard.
+An intentional regeneration uses a new idempotency key, creates a new run and brand version, but updates the same business and Cloudflare project.
+Retrying a failed task updates/reuses the existing (run_id, task_type) row rather than inserting another logical task.
 
 Failure Catalog
 
