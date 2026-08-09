@@ -82,6 +82,7 @@ export function loadGateDependencies() {
         ACTIONS.ERASE_TENANT,
         ACTIONS.APPROVE_BRAND_DOCUMENT,
         ACTIONS.APPROVE_MARKETING_PACK,
+        ACTIONS.CREATE_ARTIFACT_REVISION,
       ],
     },
     {

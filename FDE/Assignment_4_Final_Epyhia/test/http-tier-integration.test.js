@@ -355,6 +355,14 @@ test("every Tier 1 Runtime client method sends the capability", async () => {
     contentHash: "c".repeat(64),
     approvedBy: "admin",
   });
+  await runtimeClient.reviseArtifact({
+    tenantId: "tenant",
+    sourceRunId: "run",
+    artifactType: "WEB_BUILD",
+    feedback: "Make pricing easier to scan",
+    approvedBudgetMicrodollars: 500_000,
+    approvedBy: "admin",
+  }, "revision-key");
   await runtimeClient.approveMarketingPack({
     tenantId: "tenant",
     runId: "run",
@@ -374,7 +382,7 @@ test("every Tier 1 Runtime client method sends the capability", async () => {
     tenantId: "tenant",
   });
 
-  assert.equal(requests.length, 14);
+  assert.equal(requests.length, 15);
   for (const request of requests) {
     assert.equal(
       request.options.headers.authorization,

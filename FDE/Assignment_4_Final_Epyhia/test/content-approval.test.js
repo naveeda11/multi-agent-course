@@ -60,11 +60,20 @@ test("brand and marketing approvals require their dedicated admin capabilities",
         subject: "admin",
         actions: [ACTIONS.APPROVE_MARKETING_PACK],
       },
+      {
+        handle: "admin-revision",
+        subject: "admin",
+        actions: [ACTIONS.CREATE_ARTIFACT_REVISION],
+      },
     ]),
     onboardingService: {
       async approveBrandDocument(input) {
         received.push(["brand", input]);
         return { approvalStatus: "APPROVED" };
+      },
+      async createArtifactRevision(input) {
+        received.push(["revision", input]);
+        return { runId: "run_revision" };
       },
     },
     marketingService: {
@@ -86,7 +95,11 @@ test("brand and marketing approvals require their dedicated admin capabilities",
     capabilityHandle: "admin-marketing",
     runId: "run_demo",
   });
-  assert.deepEqual(received.map(([kind]) => kind), ["brand", "marketing"]);
+  await gate.createArtifactRevision({
+    capabilityHandle: "admin-revision",
+    sourceRunId: "run_demo",
+  });
+  assert.deepEqual(received.map(([kind]) => kind), ["brand", "marketing", "revision"]);
 });
 
 test("one brand approval automatically starts website and marketing generation", async () => {
@@ -157,4 +170,43 @@ test("automatic generation reports one failed branch without hiding the other", 
   assert.equal(result.generation.website.status, "FAILED");
   assert.equal(result.generation.website.error.message, "website review failed");
   assert.equal(result.generation.marketing.status, "COMPLETED");
+});
+
+test("artifact feedback creates a revision run and regenerates only the requested output", async () => {
+  const calls = [];
+  const workflow = new BrandWorkflow({
+    adminGateClient: {
+      async createArtifactRevision(input) {
+        calls.push(["revision", input]);
+        return { runId: "run_revision", replayed: false };
+      },
+    },
+    webBuilder: {
+      async buildAndRequestDeploy(input) {
+        calls.push(["website", input]);
+        return { deployment: { action: { id: "deploy_revision" } } };
+      },
+    },
+    marketer: {
+      async createAndPersistPack(input) {
+        calls.push(["marketing", input]);
+        return { persisted: { actionId: "marketing_revision" } };
+      },
+    },
+  });
+  const result = await workflow.reviseArtifact({
+    tenantId: "tenant_demo",
+    sourceRunId: "run_source",
+    artifactType: "WEB_BUILD",
+    feedback: "Make pricing easier to scan",
+    approvedBudgetMicrodollars: 500_000,
+    approvedBy: "auth0|admin",
+    idempotencyKey: "revision-request",
+  });
+  assert.equal(result.revision.runId, "run_revision");
+  assert.deepEqual(calls.map(([kind]) => kind), ["revision", "website"]);
+  assert.equal(calls[0][1].idempotencyKey, "revision-request:run");
+  assert.equal(calls[1][1].runId, "run_revision");
+  assert.deepEqual(calls[1][1].revisionFeedback, ["Make pricing easier to scan"]);
+  assert.equal(calls[1][1].idempotencyKey, "revision-request:generate");
 });

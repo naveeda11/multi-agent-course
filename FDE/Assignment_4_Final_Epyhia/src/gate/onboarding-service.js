@@ -73,7 +73,7 @@ export class OnboardingService {
 
   async createRunShell(input) {
     validateTenant(input.tenant);
-    requiredString(input.originalBrief, "originalBrief");
+    requiredString(input.originalBrief, "originalBrief", { max: 30_000 });
     requiredString(input.idempotencyKey, "idempotencyKey", { max: 200 });
     requiredString(input.approvedBy, "approvedBy", { max: 500 });
     validateBudget(input.approvedBudgetMicrodollars);
@@ -100,5 +100,18 @@ export class OnboardingService {
       throw new ValidationError("contentHash must be a SHA-256 hex digest");
     }
     return this.repository.approveBrandDocument(input);
+  }
+
+  async createArtifactRevision(input) {
+    requiredString(input.tenantId, "tenantId", { max: 200 });
+    requiredString(input.sourceRunId, "sourceRunId", { max: 200 });
+    requiredString(input.feedback, "feedback", { max: 5_000 });
+    requiredString(input.approvedBy, "approvedBy", { max: 500 });
+    requiredString(input.idempotencyKey, "idempotencyKey", { max: 200 });
+    validateBudget(input.approvedBudgetMicrodollars);
+    if (!["WEB_BUILD", "MARKETING_PACK"].includes(input.artifactType)) {
+      throw new ValidationError("artifactType must be WEB_BUILD or MARKETING_PACK");
+    }
+    return this.repository.createArtifactRevision(input);
   }
 }

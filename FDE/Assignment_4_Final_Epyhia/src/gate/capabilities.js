@@ -24,6 +24,7 @@ export const ACTIONS = Object.freeze({
   ERASE_TENANT: "erase-tenant",
   APPROVE_BRAND_DOCUMENT: "approve-brand-document",
   APPROVE_MARKETING_PACK: "approve-marketing-pack",
+  CREATE_ARTIFACT_REVISION: "create-artifact-revision",
 });
 
 export class CapabilityRegistry {

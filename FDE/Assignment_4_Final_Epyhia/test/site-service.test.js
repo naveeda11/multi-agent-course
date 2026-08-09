@@ -294,7 +294,11 @@ test("WebBuilder uses a separate Terra review purpose and creates only a pending
     tenantId: "tenant_demo",
     runId: "run_demo",
     idempotencyKey: "web-v1",
+    revisionFeedback: ["Make pricing easier to scan"],
   });
+  assert.deepEqual(JSON.parse(calls[0].input).revisionFeedback, [
+    "Make pricing easier to scan",
+  ]);
   assert.equal(calls[1].purpose, "review");
   assert.equal(calls[0].maxOutputTokens, 13_000);
   assert.match(calls[0].instructions, /under 35,000 characters/);

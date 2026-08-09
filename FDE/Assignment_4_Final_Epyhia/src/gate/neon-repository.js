@@ -239,6 +239,12 @@ export class NeonRepository {
           actionId,
         });
       }
+      if (
+        action.status === "FAILED" &&
+        action.failureMessage?.startsWith("Superseded by revision run ")
+      ) {
+        throw new ConflictError("This action was superseded by a newer revision");
+      }
       if (action.actionType === "video-render") {
         const packApproval = await client.query(
           `SELECT COUNT(*)::int AS total,
@@ -648,6 +654,36 @@ export class NeonRepository {
       }
 
       const runId = newId("run");
+      const executingDownstream = await client.query(
+        `SELECT id FROM actions
+         WHERE tenant_id = $1 AND action_type IN ('deploy', 'video-render')
+           AND status = 'EXECUTING' LIMIT 1`,
+        [tenant.id],
+      );
+      if (executingDownstream.rowCount > 0) {
+        throw new ConflictError(
+          "Wait for the current deployment or video action to finish before starting a new strategy run",
+        );
+      }
+      await client.query(
+        `UPDATE actions SET status = 'FAILED',
+          failure_message = $2, execution_started_at = NULL
+         WHERE tenant_id = $1 AND action_type IN ('deploy', 'video-render')
+           AND status <> 'EXECUTED'`,
+        [tenant.id, `Superseded by revision run ${runId}`],
+      );
+      await client.query(
+        `UPDATE marketing_artifacts SET approval_status = 'REJECTED',
+          updated_at = now()
+         WHERE tenant_id = $1 AND approval_status = 'PENDING'`,
+        [tenant.id],
+      );
+      await client.query(
+        `UPDATE runs SET status = 'SUPERSEDED'
+         WHERE tenant_id = $1
+           AND status IN ('CREATED', 'AWAITING_BRAND_APPROVAL', 'EXECUTING')`,
+        [tenant.id],
+      );
       await client.query(
         `INSERT INTO runs (
           id, tenant_id, original_brief, brief_hash,
@@ -702,6 +738,161 @@ export class NeonRepository {
       await client.query("ROLLBACK");
       if (error.code === "23505") {
         throw new ConflictError("Onboarding conflicts with an existing unique identity");
+      }
+      throw error;
+    } finally {
+      client.release();
+    }
+  }
+
+  async createArtifactRevision({
+    tenantId,
+    sourceRunId,
+    artifactType,
+    feedback,
+    approvedBudgetMicrodollars,
+    approvedBy,
+    idempotencyKey,
+  }) {
+    const revisionHash = payloadHash({
+      sourceRunId,
+      artifactType,
+      feedback,
+      approvedBudgetMicrodollars,
+      approvedBy,
+    });
+    const client = await this.pool.connect();
+    try {
+      await client.query("BEGIN");
+      await client.query("SELECT pg_advisory_xact_lock(hashtextextended($1, 0))", [
+        `${tenantId}:artifact-revision:${idempotencyKey}`,
+      ]);
+      const existing = await client.query(
+        `SELECT id, run_id, payload_hash FROM actions
+         WHERE tenant_id = $1 AND action_type = 'create-artifact-revision'
+           AND idempotency_key = $2`,
+        [tenantId, idempotencyKey],
+      );
+      if (existing.rowCount > 0) {
+        if (existing.rows[0].payload_hash !== revisionHash) {
+          throw new ConflictError(
+            "The artifact revision identity is bound to different feedback",
+          );
+        }
+        await client.query("COMMIT");
+        return {
+          tenantId,
+          sourceRunId,
+          runId: existing.rows[0].run_id,
+          artifactType,
+          actionId: existing.rows[0].id,
+          replayed: true,
+        };
+      }
+      const source = await client.query(
+        `SELECT runs.original_brief, runs.completed_brief, runs.brand_document_id,
+          brand_documents.approval_status
+         FROM runs
+         JOIN brand_documents ON brand_documents.id = runs.brand_document_id
+         WHERE runs.id = $1 AND runs.tenant_id = $2
+         FOR SHARE OF runs, brand_documents`,
+        [sourceRunId, tenantId],
+      );
+      if (source.rowCount === 0) {
+        throw new NotFoundError("The source run or brand document was not found");
+      }
+      if (source.rows[0].approval_status !== "APPROVED") {
+        throw new ConflictError("Artifact revisions require an approved brand document");
+      }
+      const supersededActionType = artifactType === "WEB_BUILD" ? "deploy" : "video-render";
+      const executing = await client.query(
+        `SELECT id FROM actions
+         WHERE tenant_id = $1 AND run_id = $2 AND action_type = $3
+           AND status = 'EXECUTING' LIMIT 1`,
+        [tenantId, sourceRunId, supersededActionType],
+      );
+      if (executing.rowCount > 0) {
+        throw new ConflictError(
+          `Wait for the current ${artifactType.toLowerCase()} action to finish before revising`,
+        );
+      }
+      const runId = newId("run");
+      const revisionBrief = `${source.rows[0].original_brief}\n\n${artifactType} revision request:\n${feedback}`;
+      await client.query(
+        `INSERT INTO runs (
+          id, tenant_id, original_brief, completed_brief, brief_hash,
+          brand_document_id, approved_budget_microdollars,
+          budget_approved_by, status
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'EXECUTING')`,
+        [
+          runId,
+          tenantId,
+          revisionBrief,
+          source.rows[0].completed_brief,
+          sha256(revisionBrief),
+          source.rows[0].brand_document_id,
+          approvedBudgetMicrodollars,
+          approvedBy,
+        ],
+      );
+      await client.query(
+        `INSERT INTO tasks (id, tenant_id, run_id, task_type, status)
+         VALUES ($1, $2, $3, $4, 'PENDING')`,
+        [newId("task"), tenantId, runId, artifactType],
+      );
+      await client.query(
+        `UPDATE actions SET status = 'FAILED',
+          failure_message = $4, execution_started_at = NULL
+         WHERE tenant_id = $1 AND run_id = $2 AND action_type = $3
+           AND status <> 'EXECUTED'`,
+        [
+          tenantId,
+          sourceRunId,
+          supersededActionType,
+          `Superseded by revision run ${runId}`,
+        ],
+      );
+      if (artifactType === "MARKETING_PACK") {
+        await client.query(
+          `UPDATE marketing_artifacts SET approval_status = 'REJECTED',
+            updated_at = now()
+           WHERE tenant_id = $1 AND run_id = $2 AND approval_status = 'PENDING'`,
+          [tenantId, sourceRunId],
+        );
+      }
+      const actionId = newId("action");
+      await client.query(
+        `INSERT INTO actions (
+          id, tenant_id, run_id, agent_name, action_type, payload_hash,
+          idempotency_key, mode, approval_status, approved_by, approved_at,
+          provider_cost_microdollars, status, payload_json, executed_at
+        ) VALUES (
+          $1, $2, $3, 'admin', 'create-artifact-revision', $4,
+          $5, 'TEST', 'APPROVED', $6, now(), 0, 'EXECUTED', $7::jsonb, now()
+        )`,
+        [
+          actionId,
+          tenantId,
+          runId,
+          revisionHash,
+          idempotencyKey,
+          approvedBy,
+          JSON.stringify({ sourceRunId, artifactType, feedback }),
+        ],
+      );
+      await client.query("COMMIT");
+      return {
+        tenantId,
+        sourceRunId,
+        runId,
+        artifactType,
+        actionId,
+        replayed: false,
+      };
+    } catch (error) {
+      await client.query("ROLLBACK");
+      if (error.code === "23505") {
+        throw new ConflictError("Artifact revision conflicts with an existing identity");
       }
       throw error;
     } finally {
@@ -851,6 +1042,9 @@ export class NeonRepository {
       const persistedHash = brand.rows[0].content_hash ?? sha256(brand.rows[0].full_text);
       if (persistedHash !== contentHash) {
         throw new ConflictError("Brand approval does not match the displayed document");
+      }
+      if (brand.rows[0].status === "SUPERSEDED") {
+        throw new ConflictError("This brand document was superseded by a newer revision");
       }
       const existing = await client.query(
         `SELECT id, payload_hash FROM actions
@@ -1593,7 +1787,7 @@ export class NeonRepository {
         throw new ConflictError("Marketing approval does not match the displayed pack");
       }
       const artifacts = await client.query(
-        `SELECT id FROM marketing_artifacts
+        `SELECT id, approval_status FROM marketing_artifacts
          WHERE tenant_id = $1 AND run_id = $2
            AND artifact_type NOT IN ('VIDEO_LANDSCAPE', 'VIDEO_VERTICAL')
          FOR UPDATE`,
@@ -1601,6 +1795,9 @@ export class NeonRepository {
       );
       if (artifacts.rowCount === 0) {
         throw new NotFoundError("The marketing pack has no reviewable artifacts");
+      }
+      if (artifacts.rows.some((artifact) => artifact.approval_status === "REJECTED")) {
+        throw new ConflictError("This marketing pack was superseded by a newer revision");
       }
       const existing = await client.query(
         `SELECT id, payload_hash FROM actions

@@ -63,4 +63,34 @@ export class BrandWorkflow {
       idempotencyKey: `marketing-approval:${runId}`,
     });
   }
+
+  async reviseArtifact({
+    tenantId,
+    sourceRunId,
+    artifactType,
+    feedback,
+    approvedBudgetMicrodollars,
+    approvedBy,
+    idempotencyKey,
+  }) {
+    const revision = await this.adminGateClient.createArtifactRevision({
+      tenantId,
+      sourceRunId,
+      artifactType,
+      feedback,
+      approvedBudgetMicrodollars,
+      approvedBy,
+      idempotencyKey: `${idempotencyKey}:run`,
+    });
+    const workerInput = {
+      tenantId,
+      runId: revision.runId,
+      revisionFeedback: [feedback],
+      idempotencyKey: `${idempotencyKey}:generate`,
+    };
+    const generated = artifactType === "WEB_BUILD"
+      ? await this.webBuilder.buildAndRequestDeploy(workerInput)
+      : await this.marketer.createAndPersistPack(workerInput);
+    return { revision, generated };
+  }
 }

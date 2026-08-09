@@ -26,6 +26,10 @@ Cloudflare, R2, and optional Vertex AI credentials.
   admin UI also polls tenant-bound task status, preserves all clarification
   rounds, exposes model/action audit and integer cost totals, and shows the
   complete grounded marketing pack before approval.
+- Versioned human revision controls for the brand document, website, and
+  marketing pack. Brand feedback starts a new strategy version; artifact-only
+  feedback creates an isolated run that reuses the approved brand and catalog.
+  Superseded pending approvals are rejected while prior evidence remains intact.
 - Tier 3 allow-lists and verifies generated-site image URLs before persistence;
   rejects remote scripts/styles/embeds and ungrounded navigation, and the live
   evaluator independently verifies the approved image responses again.

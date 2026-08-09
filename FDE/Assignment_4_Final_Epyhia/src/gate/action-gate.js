@@ -131,6 +131,17 @@ export class ActionGate {
     return this.onboardingService.approveBrandDocument(input);
   }
 
+  async createArtifactRevision({ capabilityHandle, ...input }) {
+    this.capabilities.authorize(capabilityHandle, {
+      subject: "admin",
+      action: ACTIONS.CREATE_ARTIFACT_REVISION,
+    });
+    if (!this.onboardingService) {
+      throw new ConflictError("Onboarding persistence is not configured");
+    }
+    return this.onboardingService.createArtifactRevision(input);
+  }
+
   async modelCall({ capabilityHandle, agentName, ...input }) {
     this.capabilities.authorize(capabilityHandle, {
       subject: agentName,

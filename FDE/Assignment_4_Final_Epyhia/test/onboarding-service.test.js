@@ -56,6 +56,41 @@ test("Tier 3 rejects a run budget above the authorized two-dollar cap", async ()
   assert.equal(called, false);
 });
 
+test("artifact revisions require bounded feedback and an isolated artifact type", async () => {
+  const calls = [];
+  const service = new OnboardingService({
+    repository: {
+      async createArtifactRevision(input) {
+        calls.push(input);
+        return { runId: "run_revision" };
+      },
+    },
+  });
+  const result = await service.createArtifactRevision({
+    tenantId: tenant.id,
+    sourceRunId: "run_source",
+    artifactType: "MARKETING_PACK",
+    feedback: "Shorten the launch email",
+    approvedBudgetMicrodollars: 500_000,
+    approvedBy: "auth0|admin-test",
+    idempotencyKey: "marketing-revision-1",
+  });
+  assert.equal(result.runId, "run_revision");
+  assert.equal(calls.length, 1);
+  await assert.rejects(
+    service.createArtifactRevision({
+      tenantId: tenant.id,
+      sourceRunId: "run_source",
+      artifactType: "BRAND_DOCUMENT",
+      feedback: "Change everything",
+      approvedBudgetMicrodollars: 500_000,
+      approvedBy: "auth0|admin-test",
+      idempotencyKey: "brand-revision-1",
+    }),
+    /WEB_BUILD or MARKETING_PACK/,
+  );
+});
+
 test("finalization rejects duplicate task types before persistence", async () => {
   let called = false;
   const service = new OnboardingService({

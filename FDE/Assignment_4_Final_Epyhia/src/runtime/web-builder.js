@@ -38,10 +38,15 @@ export class WebBuilder {
     this.maxDrafts = maxDrafts;
   }
 
-  async buildAndRequestDeploy({ tenantId, runId, idempotencyKey }) {
+  async buildAndRequestDeploy({
+    tenantId,
+    runId,
+    idempotencyKey,
+    revisionFeedback = [],
+  }) {
     const context = await this.gateClient.readRunContext({ tenantId, runId });
     const taskId = context.tasks.find((task) => task.taskType === "WEB_BUILD")?.id;
-    let feedback = [];
+    let feedback = [...revisionFeedback];
     for (let revision = 1; revision <= this.maxDrafts; revision += 1) {
       const draftCall = await this.gateClient.modelCall({
         tenantId,
@@ -114,7 +119,7 @@ export class WebBuilder {
         });
         return { draft, review, persisted, deployment, draftCall, reviewCall };
       }
-      feedback = review.feedback;
+      feedback = [...revisionFeedback, ...review.feedback];
     }
     throw new ValidationError("Website failed source and UX review three times");
   }

@@ -155,6 +155,22 @@ export function createRuntimeServer({
         });
         return send(response, 200, result);
       }
+      const artifactRevisionMatch = url.pathname.match(
+        /^\/v1\/runs\/([^/]+)\/artifact-revision$/,
+      );
+      if (request.method === "POST" && artifactRevisionMatch) {
+        const body = await readJson(request);
+        const result = await brandWorkflow.reviseArtifact({
+          tenantId: body.tenantId,
+          sourceRunId: decodeURIComponent(artifactRevisionMatch[1]),
+          artifactType: body.artifactType,
+          feedback: body.feedback,
+          approvedBudgetMicrodollars: body.approvedBudgetMicrodollars,
+          approvedBy: body.approvedBy,
+          idempotencyKey: request.headers["idempotency-key"],
+        });
+        return send(response, result.revision.replayed ? 200 : 201, result);
+      }
       const marketingPackApprovalMatch = url.pathname.match(
         /^\/v1\/runs\/([^/]+)\/marketing-pack\/approve$/,
       );

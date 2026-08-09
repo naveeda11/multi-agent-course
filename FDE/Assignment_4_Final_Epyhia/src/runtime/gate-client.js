@@ -146,6 +146,36 @@ export class ActionGateClient {
     return parseResponse(response);
   }
 
+  async createArtifactRevision({
+    tenantId,
+    sourceRunId,
+    artifactType,
+    feedback,
+    approvedBudgetMicrodollars,
+    approvedBy,
+    idempotencyKey,
+  }) {
+    const response = await this.fetch(
+      `${this.baseUrl}/v1/runs/${encodeURIComponent(sourceRunId)}/artifact-revision`,
+      {
+        method: "POST",
+        headers: {
+          authorization: `Bearer ${this.capabilityHandle}`,
+          "content-type": "application/json",
+          "idempotency-key": idempotencyKey,
+        },
+        body: JSON.stringify({
+          tenantId,
+          artifactType,
+          feedback,
+          approvedBudgetMicrodollars,
+          approvedBy,
+        }),
+      },
+    );
+    return parseResponse(response);
+  }
+
   async executeDeploy(actionId) {
     const response = await this.fetch(
       `${this.baseUrl}/v1/actions/${encodeURIComponent(actionId)}/execute`,

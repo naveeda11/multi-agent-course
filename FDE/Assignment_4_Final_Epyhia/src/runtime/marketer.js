@@ -73,9 +73,14 @@ export class Marketer {
     this.maxDrafts = maxDrafts;
   }
 
-  async createAndPersistPack({ tenantId, runId, idempotencyKey }) {
+  async createAndPersistPack({
+    tenantId,
+    runId,
+    idempotencyKey,
+    revisionFeedback = [],
+  }) {
     const context = await this.gateClient.readRunContext({ tenantId, runId });
-    let feedback = [];
+    let feedback = [...revisionFeedback];
     for (let revision = 1; revision <= this.maxDrafts; revision += 1) {
       const draftCall = await this.gateClient.modelCall({
         tenantId,
@@ -131,7 +136,7 @@ export class Marketer {
         });
         return { pack, review, persisted, draftCall, reviewCall };
       }
-      feedback = review.feedback;
+      feedback = [...revisionFeedback, ...review.feedback];
     }
     throw new ValidationError("Marketing pack failed grounding review twice");
   }

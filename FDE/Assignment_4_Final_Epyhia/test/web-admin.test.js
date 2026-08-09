@@ -70,7 +70,7 @@ test("admin page compiles its browser script and reuses one onboarding key for c
   const script = html.match(/<script>([\s\S]+)<\/script>/)?.[1];
   assert.ok(script);
   assert.doesNotThrow(() => new Function(script));
-  assert.match(script, /onboardingKey=crypto\.randomUUID\(\)/);
+  assert.match(script, /onboardingKey=idempotencyKeyOverride\|\|crypto\.randomUUID\(\)/);
   assert.match(script, /webBuildKey='web-build:'\+runId/);
   assert.match(script, /web-build',\{\},webBuildKey/);
   assert.match(script, /replay\.persisted\.replayed===true/);
@@ -88,6 +88,13 @@ test("admin page compiles its browser script and reuses one onboarding key for c
   assert.match(script, /Exact deployment payload hash/);
   assert.match(html, /Approve brand and generate/);
   assert.match(html, /Approve marketing pack/);
+  assert.match(html, /id="request-brand-changes"/);
+  assert.match(html, /id="request-site-changes"/);
+  assert.match(script, /Generate revised brand/);
+  assert.match(script, /Generate revised website/);
+  assert.match(script, /Generate revised marketing pack/);
+  assert.match(script, /artifact-revision/);
+  assert.match(script, /artifactType,feedback/);
   assert.doesNotMatch(html, /Generate website/);
   assert.doesNotMatch(html, /Generate marketing pack/);
   assert.match(script, /failureMessage/);

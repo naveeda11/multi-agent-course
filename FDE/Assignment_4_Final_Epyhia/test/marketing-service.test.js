@@ -148,7 +148,11 @@ test("Marketer performs a separate grounding review before Gate persistence", as
     tenantId: "tenant_demo",
     runId: "run_demo",
     idempotencyKey: "marketing-v1",
+    revisionFeedback: ["Shorten the launch email"],
   });
+  assert.deepEqual(JSON.parse(calls[0].input).revisionFeedback, [
+    "Shorten the launch email",
+  ]);
   assert.equal(calls[0].idempotencyKey, "marketing-v1:draft:v1");
   assert.match(calls[0].instructions, /generic illustrative example/);
   assert.match(calls[0].instructions, /no claimed filming, storage, or business-premises location/);

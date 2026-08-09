@@ -33,6 +33,8 @@ The orchestrator delegates to Ops for finalization. Ops invokes the Action Gate 
 
 Once that is done, the dashboard shows the completed brief and exact versioned brand document for administrator review. The Web Builder and Marketer remain blocked at the Action Gate while the brand document is PENDING. Administrator approval is bound to the brand-document id and content hash; the Runtime then automatically starts both downstream generators with stable replay-safe identities.
 
+Each review also offers Request changes with required administrator feedback. A brand or business-fact change creates a new strategy run and brand-document version, then regenerates both downstream deliverables after brand approval. Website-only or marketing-only feedback creates a separate traceable revision run that reuses the approved brand and catalog and regenerates only that artifact. Prior versions remain immutable; any unexecuted approval derived from a superseded version is rejected.
+
 Polling will happen in the background against this task table and then the dashboard is updated. 
 
 The Web Builder, using the approved brand document, generates and reviews the HTML/CSS. The dashboard presents that HTML in a sandboxed preview. Only a separate payload-hash-bound administrator approval may push the exact reviewed site to Cloudflare; the verified URL is then returned and stored and the task table is updated.
@@ -392,6 +394,5 @@ Failure Catalog
 5. Tenant Customer gets false information put on their marketing copy.  Fabricated social proof - incorporate into the marketing prompt to be honest and not include reviews/testimonials 
 6. Business Customer receives inaccurate reservation confirmation information. Business logic - double booking avoidable. Business logic checks for quantity available before booking using SELECT for UPDATE Also needs to check date overlaps. .
 7. Inaccurate descriptions on website vs DB Schema. After website is generated, conduct a programmatic check of the website vs business catalog descriptions and prices
-
 
 
