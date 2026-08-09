@@ -151,6 +151,21 @@ export class RuntimeClient {
     return parseResponse(response);
   }
 
+  async recoverWebsite({ tenantId, runId }, idempotencyKey) {
+    const response = await this.fetch(
+      `${this.baseUrl}/v1/runs/${encodeURIComponent(runId)}/web-build/recover`,
+      {
+        method: "POST",
+        headers: this.headers({
+          "content-type": "application/json",
+          "idempotency-key": idempotencyKey,
+        }),
+        body: JSON.stringify({ tenantId }),
+      },
+    );
+    return parseResponse(response);
+  }
+
   async approveBrandAndGenerate({
     tenantId,
     runId,

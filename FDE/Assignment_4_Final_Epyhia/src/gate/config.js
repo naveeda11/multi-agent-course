@@ -68,6 +68,7 @@ export function loadGateDependencies() {
         ACTIONS.MODEL_CALL,
         ACTIONS.READ_RUN_CONTEXT,
         ACTIONS.PERSIST_SITE_ARTIFACT,
+        ACTIONS.RECOVER_SITE_ARTIFACT,
       ],
     },
     {

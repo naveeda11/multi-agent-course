@@ -57,7 +57,11 @@ function buildHarness(provider = new FakeDeploymentProvider()) {
     approvedBudgetMicrodollars: 1_000_000,
   });
   const capabilities = new CapabilityRegistry([
-    { handle: WEB_HANDLE, subject: "web-builder", actions: [ACTIONS.DEPLOY] },
+    {
+      handle: WEB_HANDLE,
+      subject: "web-builder",
+      actions: [ACTIONS.DEPLOY, ACTIONS.RECOVER_SITE_ARTIFACT],
+    },
     {
       handle: ADMIN_HANDLE,
       subject: "admin",
@@ -385,6 +389,30 @@ describe("Action Gate deploy vertical slice", () => {
       runId: "run_demo",
     });
     assert.equal(result.marketing.persisted.packHash, "a".repeat(64));
+  });
+
+  test("only Web Builder can recover its completed reviewed draft", async () => {
+    harness.repository.readCompletedWebsiteReview = async ({ tenantId, runId }) => ({
+      tenantId,
+      runId,
+      revisionNumber: 2,
+    });
+    await assert.rejects(
+      harness.gate.recoverSiteArtifact({
+        capabilityHandle: ADMIN_HANDLE,
+        agentName: "web-builder",
+        tenantId: "tenant_demo",
+        runId: "run_demo",
+      }),
+      (error) => error.code === "FORBIDDEN",
+    );
+    const result = await harness.gate.recoverSiteArtifact({
+      capabilityHandle: WEB_HANDLE,
+      agentName: "web-builder",
+      tenantId: "tenant_demo",
+      runId: "run_demo",
+    });
+    assert.equal(result.revisionNumber, 2);
   });
 
   test("keeps one stable deployment project per tenant", async () => {

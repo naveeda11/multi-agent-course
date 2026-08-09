@@ -1409,6 +1409,65 @@ export class NeonRepository {
     };
   }
 
+  async readCompletedWebsiteReview({ tenantId, runId }) {
+    const result = await this.pool.query(
+      `SELECT agent_calls.id, agent_calls.idempotency_key, agent_calls.output_text
+       FROM agent_calls
+       JOIN runs ON runs.id = agent_calls.run_id
+       WHERE agent_calls.run_id = $1 AND runs.tenant_id = $2
+         AND agent_calls.agent_name = 'web-builder'
+         AND agent_calls.status = 'COMPLETED'
+         AND agent_calls.output_text IS NOT NULL
+       ORDER BY agent_calls.started_at DESC`,
+      [runId, tenantId],
+    );
+    const reviews = [];
+    const drafts = new Map();
+    for (const row of result.rows) {
+      const reviewMatch = row.idempotency_key.match(/^(.*):review:v(\d+)$/);
+      const draftMatch = row.idempotency_key.match(/^(.*):draft:v(\d+)$/);
+      try {
+        if (reviewMatch) {
+          const review = JSON.parse(row.output_text);
+          if (review.status === "PASSED") {
+            reviews.push({
+              key: `${reviewMatch[1]}:v${reviewMatch[2]}`,
+              version: Number(reviewMatch[2]),
+              review,
+              reviewCallId: row.id,
+            });
+          }
+        } else if (draftMatch) {
+          const draft = JSON.parse(row.output_text);
+          if (typeof draft.html === "string" && draft.html.length > 0) {
+            drafts.set(`${draftMatch[1]}:v${draftMatch[2]}`, {
+              draft,
+              draftCallId: row.id,
+            });
+          }
+        }
+      } catch {
+        throw new ValidationError("Completed Website output is not valid JSON");
+      }
+    }
+    reviews.sort((left, right) => right.version - left.version);
+    const passed = reviews.find(({ key }) => drafts.has(key));
+    if (!passed) {
+      throw new NotFoundError("No completed Website draft has a passed review");
+    }
+    const draft = drafts.get(passed.key);
+    return {
+      runId,
+      draft: draft.draft,
+      review: passed.review,
+      revisionNumber: passed.version,
+      evidence: {
+        draftCallId: draft.draftCallId,
+        reviewCallId: passed.reviewCallId,
+      },
+    };
+  }
+
   async readTenantProfile({ tenantId }) {
     const result = await this.pool.query(
       `SELECT id, business_name, business_slug, business_email,

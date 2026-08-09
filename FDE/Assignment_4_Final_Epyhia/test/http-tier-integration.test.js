@@ -225,6 +225,40 @@ test("brand approval returns before independent generation requests", async () =
   }]);
 });
 
+test("a passed Website draft recovers without another model request", async () => {
+  const received = [];
+  const runtimeServer = createRuntimeServer({
+    webBuilder: {
+      async recoverReviewedBuild(input) {
+        received.push(input);
+        return {
+          recovered: true,
+          persisted: { replayed: false },
+          deployment: { action: { id: "deploy_recovered" } },
+        };
+      },
+    },
+    tier1CapabilityHandle: TIER1_RUNTIME_HANDLE,
+  });
+  const runtimeClient = new RuntimeClient({
+    baseUrl: "http://runtime.internal",
+    capabilityHandle: TIER1_RUNTIME_HANDLE,
+    fetchImpl: inMemoryFetch(runtimeServer),
+  });
+
+  const result = await runtimeClient.recoverWebsite(
+    { tenantId: "tenant_recovery", runId: "run_recovery" },
+    "web-build:run_recovery",
+  );
+
+  assert.equal(result.recovered, true);
+  assert.deepEqual(received, [{
+    tenantId: "tenant_recovery",
+    runId: "run_recovery",
+    idempotencyKey: "web-build:run_recovery",
+  }]);
+});
+
 test("tenant-bound audit and cost data crosses only the admin read path", async () => {
   const received = [];
   const gateServer = createGateServer({
@@ -428,6 +462,10 @@ test("every Tier 1 Runtime client method sends the capability", async () => {
     { tenantId: "tenant", runId: "run" },
     "web-key",
   );
+  await runtimeClient.recoverWebsite(
+    { tenantId: "tenant", runId: "run" },
+    "web-recovery-key",
+  );
   await runtimeClient.approveBrandAndGenerate({
     tenantId: "tenant",
     runId: "run",
@@ -469,7 +507,7 @@ test("every Tier 1 Runtime client method sends the capability", async () => {
     tenantId: "tenant",
   });
 
-  assert.equal(requests.length, 17);
+  assert.equal(requests.length, 18);
   for (const request of requests) {
     assert.equal(
       request.options.headers.authorization,

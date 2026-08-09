@@ -92,6 +92,12 @@ test("admin page compiles its browser script and reuses one onboarding key for c
   assert.match(script, /fetchRunDeliverables/);
   assert.match(script, /Loading the exact persisted website and marketing outputs/);
   assert.match(script, /restorePersistedDeliverables\(latest\)/);
+  assert.match(html, /id="recover-website" hidden>Resume reviewed website/);
+  assert.match(script, /web-build\/recover/);
+  assert.match(script, /Resuming the passed Website draft without another AI call/);
+  assert.ok(html.indexOf('id="task-dashboard"') < html.indexOf('id="site-preview"'));
+  assert.ok(html.indexOf('id="site-preview"') < html.indexOf('id="marketing-preview"'));
+  assert.ok(html.indexOf('id="marketing-preview"') < html.indexOf('id="audit-dashboard"'));
   assert.match(script, /Exact marketing-pack hash/);
   assert.match(script, /Exact deployment payload hash/);
   assert.match(html, /Approve brand and generate/);

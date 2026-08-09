@@ -259,6 +259,17 @@ export class ActionGate {
     return this.siteService.persist({ ...input, agentName });
   }
 
+  async recoverSiteArtifact({ capabilityHandle, agentName, ...input }) {
+    this.capabilities.authorize(capabilityHandle, {
+      subject: agentName,
+      action: ACTIONS.RECOVER_SITE_ARTIFACT,
+    });
+    if (!this.repository?.readCompletedWebsiteReview) {
+      throw new ConflictError("Website recovery persistence is not configured");
+    }
+    return this.repository.readCompletedWebsiteReview(input);
+  }
+
   async executeVideoRender({ capabilityHandle, actionId, agentName }) {
     this.capabilities.authorize(capabilityHandle, {
       subject: agentName,

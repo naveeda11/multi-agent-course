@@ -21,6 +21,7 @@ export const ACTIONS = Object.freeze({
   READ_RUN_DELIVERABLES: "read-run-deliverables",
   PERSIST_MARKETING_PACK: "persist-marketing-pack",
   PERSIST_SITE_ARTIFACT: "persist-site-artifact",
+  RECOVER_SITE_ARTIFACT: "recover-site-artifact",
   VIDEO_RENDER: "video-render",
   ERASE_TENANT: "erase-tenant",
   APPROVE_BRAND_DOCUMENT: "approve-brand-document",

@@ -142,6 +142,19 @@ export function createGateServer({ gate }) {
         return send(response, 200, result);
       }
 
+      const siteRecoveryMatch = url.pathname.match(
+        /^\/v1\/runs\/([^/]+)\/site-artifact\/recovery$/,
+      );
+      if (request.method === "GET" && siteRecoveryMatch) {
+        const result = await gate.recoverSiteArtifact({
+          capabilityHandle: bearer(request),
+          agentName: request.headers["x-agent-name"],
+          tenantId: url.searchParams.get("tenantId"),
+          runId: decodeURIComponent(siteRecoveryMatch[1]),
+        });
+        return send(response, 200, result);
+      }
+
       const artifactRevisionMatch = url.pathname.match(
         /^\/v1\/runs\/([^/]+)\/artifact-revision$/,
       );

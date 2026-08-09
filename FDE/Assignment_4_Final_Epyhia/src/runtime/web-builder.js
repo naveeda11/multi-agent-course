@@ -123,4 +123,31 @@ export class WebBuilder {
     }
     throw new ValidationError("Website failed source and UX review three times");
   }
+
+  async recoverReviewedBuild({ tenantId, runId, idempotencyKey }) {
+    const recovered = await this.gateClient.recoverSiteArtifact({ tenantId, runId });
+    const persisted = await this.gateClient.persistSiteArtifact({
+      tenantId,
+      runId,
+      html: recovered.draft.html,
+      publicApiBaseUrl: this.publicApiBaseUrl,
+      review: recovered.review,
+      revisionNumber: recovered.revisionNumber,
+      idempotencyKey: `${idempotencyKey}:persist`,
+    });
+    const deployment = await this.gateClient.requestDeploy({
+      tenantId,
+      runId,
+      mode: "LIVE",
+      payload: { projectName: persisted.projectName, files: persisted.files },
+      idempotencyKey: `${idempotencyKey}:deploy`,
+    });
+    return {
+      draft: recovered.draft,
+      review: recovered.review,
+      persisted,
+      deployment,
+      recovered: true,
+    };
+  }
 }

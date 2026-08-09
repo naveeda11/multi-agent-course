@@ -222,6 +222,18 @@ export function createRuntimeServer({
         });
         return send(response, result.persisted.replayed ? 200 : 202, result);
       }
+      const webBuildRecoveryMatch = url.pathname.match(
+        /^\/v1\/runs\/([^/]+)\/web-build\/recover$/,
+      );
+      if (request.method === "POST" && webBuildRecoveryMatch) {
+        const body = await readJson(request);
+        const result = await webBuilder.recoverReviewedBuild({
+          tenantId: body.tenantId,
+          runId: decodeURIComponent(webBuildRecoveryMatch[1]),
+          idempotencyKey: request.headers["idempotency-key"],
+        });
+        return send(response, result.persisted.replayed ? 200 : 202, result);
+      }
       const approvalMatch = url.pathname.match(
         /^\/v1\/actions\/([^/]+)\/approve-and-execute$/,
       );

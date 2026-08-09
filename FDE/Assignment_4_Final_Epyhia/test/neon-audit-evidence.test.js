@@ -156,6 +156,49 @@ test("persisted run deliverables restore exact approval-bound payloads", async (
   assert.equal(responses.length, 0);
 });
 
+test("Website recovery selects the latest passed review and matching draft", async () => {
+  const repository = new NeonRepository({
+    pool: {
+      async query(sql, params) {
+        assert.match(sql, /agent_calls\.status = 'COMPLETED'/);
+        assert.deepEqual(params, ["run_demo", "tenant_demo"]);
+        return {
+          rows: [
+            {
+              id: "review_v2",
+              idempotency_key: "web-build:run_demo:review:v2",
+              output_text: JSON.stringify({ status: "PASSED", feedback: [] }),
+            },
+            {
+              id: "draft_v2",
+              idempotency_key: "web-build:run_demo:draft:v2",
+              output_text: JSON.stringify({ html: "<!doctype html><title>Passed</title>" }),
+            },
+            {
+              id: "review_v1",
+              idempotency_key: "web-build:run_demo:review:v1",
+              output_text: JSON.stringify({ status: "FAILED", feedback: ["Revise"] }),
+            },
+          ],
+        };
+      },
+    },
+  });
+
+  const result = await repository.readCompletedWebsiteReview({
+    tenantId: "tenant_demo",
+    runId: "run_demo",
+  });
+
+  assert.equal(result.revisionNumber, 2);
+  assert.equal(result.draft.html, "<!doctype html><title>Passed</title>");
+  assert.equal(result.review.status, "PASSED");
+  assert.deepEqual(result.evidence, {
+    draftCallId: "draft_v2",
+    reviewCallId: "review_v2",
+  });
+});
+
 test("tenant profile returns null for a first-time Auth0 identity", async () => {
   const repository = new NeonRepository({
     pool: {

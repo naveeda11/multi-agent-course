@@ -311,3 +311,48 @@ test("WebBuilder uses a separate Terra review purpose and creates only a pending
   assert.equal(calls[3].mode, "LIVE");
   assert.equal(result.deployment.approvalStatus, "PENDING");
 });
+
+test("WebBuilder recovers a passed draft without making another model call", async () => {
+  const calls = [];
+  const gateClient = {
+    async recoverSiteArtifact(input) {
+      calls.push(["recover", input]);
+      return {
+        draft: { html: validHtml },
+        review: { status: "PASSED", feedback: [] },
+        revisionNumber: 2,
+      };
+    },
+    async persistSiteArtifact(input) {
+      calls.push(["persist", input]);
+      return {
+        projectName: "epyhia-brightday",
+        files: { "index.html": validHtml },
+        replayed: false,
+      };
+    },
+    async requestDeploy(input) {
+      calls.push(["deploy", input]);
+      return { action: { id: "deploy_recovered", status: "PENDING_APPROVAL" } };
+    },
+    async modelCall() {
+      throw new Error("Recovery must not call a model");
+    },
+  };
+  const builder = new WebBuilder({
+    gateClient,
+    publicApiBaseUrl: "https://agency.example",
+  });
+
+  const result = await builder.recoverReviewedBuild({
+    tenantId: "tenant_demo",
+    runId: "run_demo",
+    idempotencyKey: "web-build:run_demo",
+  });
+
+  assert.deepEqual(calls.map(([kind]) => kind), ["recover", "persist", "deploy"]);
+  assert.equal(calls[1][1].revisionNumber, 2);
+  assert.equal(calls[1][1].idempotencyKey, "web-build:run_demo:persist");
+  assert.equal(calls[2][1].idempotencyKey, "web-build:run_demo:deploy");
+  assert.equal(result.recovered, true);
+});
