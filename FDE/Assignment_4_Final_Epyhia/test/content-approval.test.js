@@ -142,6 +142,37 @@ test("one brand approval automatically starts website and marketing generation",
   assert.equal(result.generation.marketing.status, "COMPLETED");
 });
 
+test("brand approval can complete before either generation branch", async () => {
+  const calls = [];
+  const workflow = new BrandWorkflow({
+    adminGateClient: {
+      async approveBrandDocument(input) {
+        calls.push(["approve", input.idempotencyKey]);
+        return { approvalStatus: "APPROVED" };
+      },
+    },
+    webBuilder: {
+      async buildAndRequestDeploy() {
+        calls.push(["website"]);
+      },
+    },
+    marketer: {
+      async createAndPersistPack() {
+        calls.push(["marketing"]);
+      },
+    },
+  });
+  const result = await workflow.approveBrandDocument({
+    tenantId: "tenant_demo",
+    runId: "run_demo",
+    brandDocumentId: "brand_demo",
+    contentHash: "a".repeat(64),
+    approvedBy: "auth0|admin",
+  });
+  assert.equal(result.approvalStatus, "APPROVED");
+  assert.deepEqual(calls, [["approve", "brand-approval:brand_demo"]]);
+});
+
 test("automatic generation reports one failed branch without hiding the other", async () => {
   const workflow = new BrandWorkflow({
     adminGateClient: {

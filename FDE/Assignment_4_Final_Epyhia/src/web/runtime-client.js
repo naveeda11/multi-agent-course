@@ -165,6 +165,29 @@ export class RuntimeClient {
     return parseResponse(response);
   }
 
+  async approveBrandDocument({
+    tenantId,
+    runId,
+    brandDocumentId,
+    contentHash,
+    approvedBy,
+  }) {
+    const response = await this.fetch(
+      `${this.baseUrl}/v1/runs/${encodeURIComponent(runId)}/brand-document/approve`,
+      {
+        method: "POST",
+        headers: this.headers({ "content-type": "application/json" }),
+        body: JSON.stringify({
+          tenantId,
+          brandDocumentId,
+          contentHash,
+          approvedBy,
+        }),
+      },
+    );
+    return parseResponse(response);
+  }
+
   async reviseArtifact({
     tenantId,
     sourceRunId,

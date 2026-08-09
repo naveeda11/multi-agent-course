@@ -18,6 +18,23 @@ export class BrandWorkflow {
     this.webBuilder = webBuilder;
   }
 
+  async approveBrandDocument({
+    tenantId,
+    runId,
+    brandDocumentId,
+    contentHash,
+    approvedBy,
+  }) {
+    return this.adminGateClient.approveBrandDocument({
+      tenantId,
+      runId,
+      brandDocumentId,
+      contentHash,
+      approvedBy,
+      idempotencyKey: `brand-approval:${brandDocumentId}`,
+    });
+  }
+
   async approveAndGenerate({
     tenantId,
     runId,
@@ -25,13 +42,12 @@ export class BrandWorkflow {
     contentHash,
     approvedBy,
   }) {
-    const approval = await this.adminGateClient.approveBrandDocument({
+    const approval = await this.approveBrandDocument({
       tenantId,
       runId,
       brandDocumentId,
       contentHash,
       approvedBy,
-      idempotencyKey: `brand-approval:${brandDocumentId}`,
     });
     const [website, marketing] = await Promise.allSettled([
       this.webBuilder.buildAndRequestDeploy({

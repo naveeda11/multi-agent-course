@@ -146,6 +146,41 @@ test("authenticated run status crosses Tier 2 through an admin read capability",
   assert.equal(received[0].capabilityHandle, "http-tier-admin-capability");
 });
 
+test("brand approval returns before independent generation requests", async () => {
+  const received = [];
+  const runtimeServer = createRuntimeServer({
+    brandWorkflow: {
+      async approveBrandDocument(input) {
+        received.push(input);
+        return { approvalStatus: "APPROVED" };
+      },
+    },
+    tier1CapabilityHandle: TIER1_RUNTIME_HANDLE,
+  });
+  const runtimeClient = new RuntimeClient({
+    baseUrl: "http://runtime.internal",
+    capabilityHandle: TIER1_RUNTIME_HANDLE,
+    fetchImpl: inMemoryFetch(runtimeServer),
+  });
+
+  const result = await runtimeClient.approveBrandDocument({
+    tenantId: "tenant_brand_test",
+    runId: "run_brand_test",
+    brandDocumentId: "brand_test",
+    contentHash: "a".repeat(64),
+    approvedBy: "auth0|admin",
+  });
+
+  assert.equal(result.approvalStatus, "APPROVED");
+  assert.deepEqual(received, [{
+    tenantId: "tenant_brand_test",
+    runId: "run_brand_test",
+    brandDocumentId: "brand_test",
+    contentHash: "a".repeat(64),
+    approvedBy: "auth0|admin",
+  }]);
+});
+
 test("tenant-bound audit and cost data crosses only the admin read path", async () => {
   const received = [];
   const gateServer = createGateServer({
@@ -355,6 +390,13 @@ test("every Tier 1 Runtime client method sends the capability", async () => {
     contentHash: "c".repeat(64),
     approvedBy: "admin",
   });
+  await runtimeClient.approveBrandDocument({
+    tenantId: "tenant",
+    runId: "run",
+    brandDocumentId: "brand",
+    contentHash: "c".repeat(64),
+    approvedBy: "admin",
+  });
   await runtimeClient.reviseArtifact({
     tenantId: "tenant",
     sourceRunId: "run",
@@ -382,7 +424,7 @@ test("every Tier 1 Runtime client method sends the capability", async () => {
     tenantId: "tenant",
   });
 
-  assert.equal(requests.length, 15);
+  assert.equal(requests.length, 16);
   for (const request of requests) {
     assert.equal(
       request.options.headers.authorization,
