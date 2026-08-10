@@ -74,6 +74,10 @@ test("admin page compiles its browser script and reuses one onboarding key for c
   assert.match(script, /webBuildKey='web-build:'\+runId/);
   assert.match(script, /web-build',\{\},webBuildKey/);
   assert.match(script, /replay\.persisted\.replayed===true/);
+  assert.match(
+    script,
+    /replayProof\.addEventListener[\s\S]*web-build\/recover',\{\},webBuildKey/,
+  );
   assert.match(script, /paidOrderCount>0/);
   assert.match(script, /duplicateOrderGroups===0/);
   assert.match(html, /Re-run same build and verify/);
