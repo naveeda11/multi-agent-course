@@ -1342,7 +1342,15 @@ export class NeonRepository {
       [runId, tenantId],
     );
     if (run.rowCount === 0) throw new NotFoundError(`Run ${runId} was not found`);
-    const [siteArtifact, deployAction, marketingAction, videoAction, marketingState] =
+    const [
+      siteArtifact,
+      deployAction,
+      deployedSite,
+      marketingAction,
+      videoAction,
+      marketingState,
+      videoArtifacts,
+    ] =
       await Promise.all([
         this.pool.query(
           `SELECT html_content, content_hash, revision_number
@@ -1355,6 +1363,14 @@ export class NeonRepository {
           `SELECT * FROM actions
            WHERE run_id = $1 AND tenant_id = $2 AND action_type = 'deploy'
            ORDER BY created_at DESC LIMIT 1`,
+          [runId, tenantId],
+        ),
+        this.pool.query(
+          `SELECT deployments.live_url, deployments.verified_at
+           FROM deployments
+           JOIN actions ON actions.id = deployments.last_action_id
+           WHERE actions.run_id = $1 AND deployments.tenant_id = $2
+           LIMIT 1`,
           [runId, tenantId],
         ),
         this.pool.query(
@@ -1380,20 +1396,33 @@ export class NeonRepository {
            FROM marketing_artifacts WHERE run_id = $1 AND tenant_id = $2`,
           [runId, tenantId],
         ),
+        this.pool.query(
+          `SELECT artifact_type, channel, r2_object_key, mime_type
+           FROM marketing_artifacts
+           WHERE run_id = $1 AND tenant_id = $2
+             AND artifact_type IN ('VIDEO_LANDSCAPE', 'VIDEO_VERTICAL')
+             AND approval_status = 'APPROVED'
+           ORDER BY artifact_type`,
+          [runId, tenantId],
+        ),
       ]);
     const site = siteArtifact.rows[0];
-    const deployment = parseAction(deployAction.rows[0]);
+    const deploymentAction = parseAction(deployAction.rows[0]);
     const marketing = marketingAction.rows[0];
     return {
       runId,
-      website: site && deployment
+      website: site && deploymentAction
         ? {
             draft: { html: site.html_content },
             persisted: {
               contentHash: site.content_hash,
               revisionNumber: Number(site.revision_number),
             },
-            deployment: { action: deployment },
+            deployment: {
+              action: deploymentAction,
+              liveUrl: deployedSite.rows[0]?.live_url ?? null,
+              verifiedAt: deployedSite.rows[0]?.verified_at ?? null,
+            },
           }
         : null,
       marketing: marketing
@@ -1403,6 +1432,12 @@ export class NeonRepository {
               packHash: marketing.payload_hash,
               videoAction: parseAction(videoAction.rows[0]),
               approvalStatus: marketingState.rows[0]?.approval_status ?? "PENDING",
+              videoArtifacts: videoArtifacts.rows.map((artifact) => ({
+                artifactType: artifact.artifact_type,
+                variant: artifact.channel,
+                objectKey: artifact.r2_object_key,
+                mimeType: artifact.mime_type,
+              })),
             },
           }
         : null,

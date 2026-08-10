@@ -120,6 +120,12 @@ test("persisted run deliverables restore exact approval-bound payloads", async (
         status: "PENDING_APPROVAL",
       }],
     },
+    {
+      rows: [{
+        live_url: "https://stored-site.pages.dev",
+        verified_at: "2026-08-09T00:00:00.000Z",
+      }],
+    },
     { rows: [{ payload_hash: "pack-hash", payload_json: { pack } }] },
     {
       rows: [{
@@ -133,6 +139,14 @@ test("persisted run deliverables restore exact approval-bound payloads", async (
       }],
     },
     { rows: [{ approval_status: "PENDING" }] },
+    {
+      rows: [{
+        artifact_type: "VIDEO_LANDSCAPE",
+        channel: "landscape",
+        r2_object_key: "tenant/run/video/landscape.mp4",
+        mime_type: "video/mp4",
+      }],
+    },
   ];
   const repository = new NeonRepository({
     pool: {
@@ -149,10 +163,17 @@ test("persisted run deliverables restore exact approval-bound payloads", async (
 
   assert.equal(result.website.draft.html, "<!doctype html><title>Stored</title>");
   assert.equal(result.website.deployment.action.payloadHash, "deploy-hash");
+  assert.equal(result.website.deployment.liveUrl, "https://stored-site.pages.dev");
   assert.deepEqual(result.marketing.pack, pack);
   assert.equal(result.marketing.persisted.packHash, "pack-hash");
   assert.equal(result.marketing.persisted.videoAction.payloadHash, "video-hash");
   assert.equal(result.marketing.persisted.approvalStatus, "PENDING");
+  assert.deepEqual(result.marketing.persisted.videoArtifacts, [{
+    artifactType: "VIDEO_LANDSCAPE",
+    variant: "landscape",
+    objectKey: "tenant/run/video/landscape.mp4",
+    mimeType: "video/mp4",
+  }]);
   assert.equal(responses.length, 0);
 });
 

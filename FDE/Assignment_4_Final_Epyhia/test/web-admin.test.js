@@ -100,6 +100,15 @@ test("admin page compiles its browser script and reuses one onboarding key for c
   assert.ok(html.indexOf('id="marketing-preview"') < html.indexOf('id="audit-dashboard"'));
   assert.match(script, /Exact marketing-pack hash/);
   assert.match(script, /Exact deployment payload hash/);
+  assert.match(html, /id="site-live-result"/);
+  assert.match(script, /Open live website/);
+  assert.match(script, /showLiveWebsite\(recoveredUrl\)/);
+  assert.match(script, /Generated videos/);
+  assert.match(script, /Landscape video · 16:9/);
+  assert.match(script, /Vertical video · 9:16/);
+  assert.match(script, /video\.controls=true/);
+  assert.match(script, /persisted\.videoArtifacts/);
+  assert.match(script, /persisted\.approvalStatus==='APPROVED'/);
   assert.match(html, /Approve brand and generate/);
   assert.match(html, /Approve marketing pack/);
   assert.match(html, /id="request-brand-changes"/);

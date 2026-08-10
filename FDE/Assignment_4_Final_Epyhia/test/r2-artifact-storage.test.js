@@ -71,6 +71,44 @@ test("rejects unsafe R2 object keys", async () => {
   );
 });
 
+test("creates a temporary HTTPS viewing URL for a stored video", async () => {
+  let signedCommand;
+  let signedOptions;
+  const storage = new R2ArtifactStorage({
+    bucket: "demo-bucket",
+    client: {},
+    async signer(_client, command, options) {
+      signedCommand = command.input;
+      signedOptions = options;
+      return "https://r2.example.test/private-video?signature=test";
+    },
+  });
+
+  const result = await storage.createViewUrl({
+    objectKey: "tenant/run/video/landscape.mp4",
+    mimeType: "video/mp4",
+  });
+
+  assert.equal(result.url, "https://r2.example.test/private-video?signature=test");
+  assert.match(result.expiresAt, /^\d{4}-\d{2}-\d{2}T/);
+  assert.equal(signedCommand.Bucket, "demo-bucket");
+  assert.equal(signedCommand.Key, "tenant/run/video/landscape.mp4");
+  assert.equal(signedCommand.ResponseContentDisposition, "inline");
+  assert.deepEqual(signedOptions, { expiresIn: 900 });
+});
+
+test("refuses to create view URLs for unsafe or non-video objects", async () => {
+  const storage = new R2ArtifactStorage({ bucket: "demo-bucket", client: {} });
+  await assert.rejects(
+    storage.createViewUrl({ objectKey: "../secret", mimeType: "video/mp4" }),
+    ValidationError,
+  );
+  await assert.rejects(
+    storage.createViewUrl({ objectKey: "tenant/run/file.txt", mimeType: "text/plain" }),
+    ValidationError,
+  );
+});
+
 test("deletes and verifies every object under the tenant prefix", async () => {
   let listed = false;
   const calls = [];

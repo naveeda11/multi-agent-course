@@ -1,18 +1,33 @@
 import {
   DeleteObjectsCommand,
+  GetObjectCommand,
   HeadObjectCommand,
   ListObjectsV2Command,
   PutObjectCommand,
   S3Client,
 } from "@aws-sdk/client-s3";
+import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import { sha256 } from "../../shared/canonical.js";
 import { ConflictError, ProviderError, ValidationError } from "../../shared/errors.js";
 
 const OBJECT_KEY_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._/-]{0,1023}$/;
 const MAX_ARTIFACT_BYTES = 100 * 1024 * 1024;
+const DEFAULT_VIEW_URL_EXPIRY_SECONDS = 15 * 60;
+const MIN_VIEW_URL_EXPIRY_SECONDS = 60;
+const MAX_VIEW_URL_EXPIRY_SECONDS = 60 * 60;
+
+function validateObjectKey(objectKey) {
+  if (
+    !OBJECT_KEY_PATTERN.test(objectKey ?? "") ||
+    objectKey.startsWith("/") ||
+    objectKey.includes("..")
+  ) {
+    throw new ValidationError("R2 objectKey must be a safe relative object key");
+  }
+}
 
 export class R2ArtifactStorage {
-  constructor({ endpoint, accessKeyId, secretAccessKey, bucket, client } = {}) {
+  constructor({ endpoint, accessKeyId, secretAccessKey, bucket, client, signer } = {}) {
     if (!bucket) throw new ValidationError("R2_BUCKET is required");
     this.bucket = bucket;
     this.client =
@@ -22,16 +37,11 @@ export class R2ArtifactStorage {
         endpoint,
         credentials: { accessKeyId, secretAccessKey },
       });
+    this.signer = signer ?? getSignedUrl;
   }
 
   async put({ objectKey, body, mimeType }) {
-    if (
-      !OBJECT_KEY_PATTERN.test(objectKey ?? "") ||
-      objectKey.startsWith("/") ||
-      objectKey.includes("..")
-    ) {
-      throw new ValidationError("R2 objectKey must be a safe relative object key");
-    }
+    validateObjectKey(objectKey);
     if (!Buffer.isBuffer(body)) throw new ValidationError("R2 artifact body must be a Buffer");
     if (body.length < 1 || body.length > MAX_ARTIFACT_BYTES) {
       throw new ValidationError("R2 artifact must contain between 1 byte and 100 MiB");
@@ -71,6 +81,45 @@ export class R2ArtifactStorage {
       return { objectKey, contentHash, bytes: body.length, replayed: false };
     } catch (error) {
       throw new ProviderError("R2 artifact upload failed", { cause: error.message });
+    }
+  }
+
+  async createViewUrl({
+    objectKey,
+    mimeType,
+    expiresInSeconds = DEFAULT_VIEW_URL_EXPIRY_SECONDS,
+  }) {
+    validateObjectKey(objectKey);
+    if (typeof mimeType !== "string" || !/^video\/[\w.+-]+$/.test(mimeType)) {
+      throw new ValidationError("Only stored video artifacts can receive a view URL");
+    }
+    if (
+      !Number.isInteger(expiresInSeconds) ||
+      expiresInSeconds < MIN_VIEW_URL_EXPIRY_SECONDS ||
+      expiresInSeconds > MAX_VIEW_URL_EXPIRY_SECONDS
+    ) {
+      throw new ValidationError("R2 view URL expiry must be between 60 and 3600 seconds");
+    }
+    try {
+      const url = await this.signer(
+        this.client,
+        new GetObjectCommand({
+          Bucket: this.bucket,
+          Key: objectKey,
+          ResponseContentType: mimeType,
+          ResponseContentDisposition: "inline",
+        }),
+        { expiresIn: expiresInSeconds },
+      );
+      if (new URL(url).protocol !== "https:") {
+        throw new Error("signed URL must use HTTPS");
+      }
+      return {
+        url,
+        expiresAt: new Date(Date.now() + expiresInSeconds * 1000).toISOString(),
+      };
+    } catch (error) {
+      throw new ProviderError("R2 video view URL signing failed", { cause: error.message });
     }
   }
 

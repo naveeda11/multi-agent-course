@@ -223,7 +223,16 @@ export class ActionGate {
     if (!this.repository?.readRunDeliverables) {
       throw new ConflictError("Run deliverable persistence is not configured");
     }
-    return this.repository.readRunDeliverables(input);
+    const deliverables = await this.repository.readRunDeliverables(input);
+    const storedVideos = deliverables.marketing?.persisted?.videoArtifacts ?? [];
+    if (storedVideos.length > 0) {
+      if (!this.videoService) {
+        throw new ConflictError("Video artifact access is not configured");
+      }
+      deliverables.marketing.persisted.videoArtifacts =
+        await this.videoService.createViewUrls(storedVideos);
+    }
+    return deliverables;
   }
 
   async persistMarketingPack({ capabilityHandle, agentName, ...input }) {

@@ -8,6 +8,20 @@ export class VideoService {
     this.storage = storage;
   }
 
+  async createViewUrls(artifacts) {
+    return Promise.all(
+      artifacts.map(async (artifact) => ({
+        artifactType: artifact.artifactType,
+        variant: artifact.variant,
+        mimeType: artifact.mimeType,
+        ...(await this.storage.createViewUrl({
+          objectKey: artifact.objectKey,
+          mimeType: artifact.mimeType,
+        })),
+      })),
+    );
+  }
+
   async execute({ actionId, agentName = "marketer" }) {
     const original = await this.repository.requireAction(actionId);
     if (original.agentName !== agentName || original.actionType !== "video-render") {

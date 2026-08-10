@@ -391,6 +391,48 @@ describe("Action Gate deploy vertical slice", () => {
     assert.equal(result.marketing.persisted.packHash, "a".repeat(64));
   });
 
+  test("restored video artifacts receive temporary view URLs inside the Gate", async () => {
+    harness.repository.readRunDeliverables = async () => ({
+      runId: "run_demo",
+      website: null,
+      marketing: {
+        persisted: {
+          packHash: "a".repeat(64),
+          videoArtifacts: [{
+            artifactType: "VIDEO_LANDSCAPE",
+            variant: "landscape",
+            objectKey: "private/landscape.mp4",
+            mimeType: "video/mp4",
+          }],
+        },
+      },
+    });
+    harness.gate.videoService = {
+      async createViewUrls(artifacts) {
+        assert.equal(artifacts[0].objectKey, "private/landscape.mp4");
+        return [{
+          artifactType: "VIDEO_LANDSCAPE",
+          variant: "landscape",
+          mimeType: "video/mp4",
+          url: "https://r2.example.test/signed",
+          expiresAt: "2026-08-09T00:15:00.000Z",
+        }];
+      },
+    };
+
+    const result = await harness.gate.readRunDeliverables({
+      capabilityHandle: ADMIN_HANDLE,
+      tenantId: "tenant_demo",
+      runId: "run_demo",
+    });
+
+    assert.equal(
+      result.marketing.persisted.videoArtifacts[0].url,
+      "https://r2.example.test/signed",
+    );
+    assert.equal(result.marketing.persisted.videoArtifacts[0].objectKey, undefined);
+  });
+
   test("only Web Builder can recover its completed reviewed draft", async () => {
     harness.repository.readCompletedWebsiteReview = async ({ tenantId, runId }) => ({
       tenantId,
